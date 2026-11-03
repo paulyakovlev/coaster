@@ -1,6 +1,6 @@
 # Coaster
 
-A tiny e-ink cycling companion. It records rides to GPX and uploads them to Strava when it reaches home Wi-Fi. No phone, no app. See [SPEC.md](SPEC.md) for what it does and what's out of scope.
+A tiny e-ink cycling companion. It records rides to GPX and uploads them to Strava when it reaches home Wi-Fi. See [SPEC.md](SPEC.md) for what it does and what's out of scope.
 
 ## Hardware
 
