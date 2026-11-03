@@ -83,18 +83,16 @@ I2C addresses on the shared bus: PCF85063 RTC 0x51, SHTC3 0x70, BMP280 0x76 or 0
 
 ## Current status
 
-- Hello-world firmware exists in `src/main.cpp`. Not yet built or flashed.
-- No commits yet.
+- Hello-world firmware exists in `src/main.cpp`. Builds cleanly with PlatformIO 6.2 (env `waveshare-epaper-154`). Not yet flashed; waiting for the board.
 
 ## Next steps
 
-1. Build and flash hello-world. Set PSRAM mode for the board version (V1: `qio_qspi`, V2: `qio_opi`).
-2. First commit, with `vendor/` and `.pio/` in `.gitignore`.
-3. Deep sleep between screen updates.
-4. Rider sprite and the speed screen.
-5. GPS over UART, then log GPX to flash.
-6. Barometer over I2C for elevation.
-7. Sync and setup flow.
+1. Flash hello-world. Set PSRAM mode for the board version first (V1: `qio_qspi`, V2: `qio_opi`).
+2. Deep sleep between screen updates.
+3. Rider sprite and the speed screen.
+4. GPS over UART, then log GPX to flash.
+5. Barometer over I2C for elevation.
+6. Sync and setup flow.
 
 ## Open questions
 
