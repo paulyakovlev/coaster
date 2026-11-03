@@ -19,6 +19,8 @@ Read `SPEC.md` before doing any work. It defines what the device does and what i
 
 ## Rules
 
+- The Waveshare board is proof-of-concept hardware; v1 will use something else. Keep everything except `lib/epaper_driver/`, `lib/board_power/` and pin numbers hardware-independent. Don't spend effort on tuning specific to this panel, such as custom waveforms.
+
 - Pins come from the vendor's `user_config.h` and examples. Don't guess pin numbers.
 - If a pin or setting is unknown, say so and ask. Don't fill it in.
 - This is a battery device. Avoid dynamic allocation in the main loop and keep the screen refresh rate low.

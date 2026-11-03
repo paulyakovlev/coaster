@@ -12,11 +12,22 @@ Casual riders doing coffee rides and social group rides who have a Strava accoun
 
 ## Hardware
 
+This is proof-of-concept hardware, chosen to test the idea, not to ship. v1 will likely use a different board and display (see Open questions). Keep everything except the display driver, board power code and pin numbers hardware-independent, and don't invest in tuning specific to this panel, such as custom e-ink waveforms.
+
+### What the proof of concept should answer
+
+- Is one update per second enough for the rider to feel alive?
+- Is 1.54" readable at a glance while riding?
+- How long does the battery last with GPS running?
+- What mount and size feel like "an accessory, not a gadget"?
+
+### Proof-of-concept parts
+
 - Waveshare ESP32-S3-ePaper-1.54 (board version: TBD, V1 or V2; check silkscreen). V1 uses quad PSRAM, V2 uses octal PSRAM. V2 replaced V1 from 2025-11-01.
 - 1.54" e-paper, 200x200, black and white, SPI
 - Onboard, not yet used: PCF85063 RTC (useful for timestamps before GPS fix and for wake from sleep), SHTC3 temperature/humidity sensor, audio codec
 - GPS module: Teyleten / NEO-6M class, UART (pins: TBD)
-- Barometer: BMP280 class, I2C (pins: TBD)
+- Barometer: BMP280 class, I2C (shared bus, see Pinout)
 - LiPo battery via the board's MX1.25 header
 - microSD via the onboard TF slot (FAT32)
 
@@ -118,3 +129,4 @@ E-paper is not a video display. These limits shape the screen and the rider desi
 - Strava OAuth: the phone has no internet while joined to the device's AP. Do OAuth after the device joins home Wi-Fi, served at its local IP? Where does the client secret live?
 - Thesis says "rides you take alone"; target rider includes social group rides. Which is it?
 - Strava API app approval needed before sharing beyond personal use.
+- v1 hardware: which board and display? E-ink holds the image with no power and looks like paper, but limits animation to about one update per second. Memory-in-pixel LCDs (Sharp Memory LCD, JDI, as used in many sports watches and bike computers) are also sunlight-readable and low-power, and refresh fast enough for smooth animation with no ghosting, but they need some power to hold the image. Decide after the proof of concept.
