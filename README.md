@@ -17,6 +17,12 @@ pio run                                    # build
 pio run -t upload && pio device monitor    # flash and watch serial output
 ```
 
+Refresh test (fake ride at 1 Hz, refresh timings and battery voltage over serial; see the top of `hwtest/refresh_test.cpp` for serial commands):
+
+```sh
+pio run -e refresh-test -t upload && pio device monitor
+```
+
 Set PSRAM for your board version in `platformio.ini` before flashing. Check the silkscreen: V1 uses `qio_qspi`, V2 uses `qio_opi`.
 
 ## Preview screens without the board

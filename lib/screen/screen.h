@@ -15,8 +15,6 @@
 
 void screen_draw_hello(GFXcanvas1 &canvas);
 
-// Placeholder layout: one big number with its unit underneath.
-void screen_draw_speed(GFXcanvas1 &canvas, float speed_kmh);
 
 // Side-view pixel rider. Every pose fills the same box, so changing pose is
 // one partial refresh of that box.
@@ -34,3 +32,12 @@ void screen_draw_rider(GFXcanvas1 &canvas, int16_t x, int16_t y, RiderPose pose)
 
 // The rider alone, centered, for previewing poses.
 void screen_draw_rider_preview(GFXcanvas1 &canvas, RiderPose pose);
+
+// Placeholder layout: one big number with its unit underneath. The UI isn't
+// decided yet (pages, whether the rider can be turned off), so the rider is
+// optional. With the rider, the number shrinks to the top half and the rider
+// box sits at the bottom, at (RIDER_X, RIDER_Y).
+#define RIDER_X ((SCREEN_WIDTH - RIDER_WIDTH) / 2)
+#define RIDER_Y (SCREEN_HEIGHT - RIDER_HEIGHT - 4)
+
+void screen_draw_speed(GFXcanvas1 &canvas, float speed_kmh, bool show_rider, RiderPose pose);

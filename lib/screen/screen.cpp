@@ -22,7 +22,7 @@ void screen_draw_hello(GFXcanvas1 &canvas) {
     print_centered(canvas, "hello rider.", (SCREEN_HEIGHT - 14) / 2);
 }
 
-void screen_draw_speed(GFXcanvas1 &canvas, float speed_kmh) {
+void screen_draw_speed(GFXcanvas1 &canvas, float speed_kmh, bool show_rider, RiderPose pose) {
     canvas.fillScreen(SCREEN_WHITE);
     canvas.setTextColor(SCREEN_BLACK);
     canvas.setTextWrap(false);
@@ -30,10 +30,19 @@ void screen_draw_speed(GFXcanvas1 &canvas, float speed_kmh) {
     char buf[8];
     snprintf(buf, sizeof(buf), "%d", (int)lroundf(speed_kmh));
 
-    // Built-in 5x7 font scaled 10x: 70 px tall digits
-    canvas.setTextSize(10);
-    print_centered(canvas, buf, 40);
+    if (!show_rider) {
+        // Built-in 5x7 font scaled 10x: 70 px tall digits
+        canvas.setTextSize(10);
+        print_centered(canvas, buf, 40);
+        canvas.setTextSize(2);
+        print_centered(canvas, "km/h", 130);
+        return;
+    }
 
+    // Scaled 8x: 56 px tall digits, unit just under, rider below that
+    canvas.setTextSize(8);
+    print_centered(canvas, buf, 8);
     canvas.setTextSize(2);
-    print_centered(canvas, "km/h", 130);
+    print_centered(canvas, "km/h", 72);
+    screen_draw_rider(canvas, RIDER_X, RIDER_Y, pose);
 }

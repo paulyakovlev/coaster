@@ -47,11 +47,18 @@ int main(int argc, char **argv) {
     screen_draw_hello(canvas);
     save(canvas, "hello");
 
-    const float speeds[] = {0, 8.4f, 23.6f, 47};
-    for (float speed : speeds) {
+    // Each speed with a pose that could go with it, with and without rider
+    const struct {
+        float speed;
+        RiderPose pose;
+    } rides[] = {{0, RIDER_STOPPED}, {8.4f, RIDER_CLIMBING}, {23.6f, RIDER_FAST}, {47, RIDER_FAST}};
+    for (const auto &ride : rides) {
         char name[32];
-        snprintf(name, sizeof(name), "speed_%ld", lroundf(speed));
-        screen_draw_speed(canvas, speed);
+        snprintf(name, sizeof(name), "speed_%ld", lroundf(ride.speed));
+        screen_draw_speed(canvas, ride.speed, false, ride.pose);
+        save(canvas, name);
+        snprintf(name, sizeof(name), "speed_%ld_rider", lroundf(ride.speed));
+        screen_draw_speed(canvas, ride.speed, true, ride.pose);
         save(canvas, name);
     }
 
