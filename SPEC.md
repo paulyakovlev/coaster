@@ -56,9 +56,9 @@ I2C addresses on the shared bus: PCF85063 RTC 0x51, SHTC3 0x70, BMP280 0x76 or 0
 
 - Shows one main number at a time. Fewer pages, bigger type. No dense stats.
 - Shows speed, distance, elapsed time, and elevation.
-- A pixel rider on screen:
+- A pixel rider on screen, seen from the side. A silly character (an antenna blob), not a realistic cyclist:
   - Climbing: pedals hard, leaning forward
-  - Fast: aero tuck, speed lines
+  - Fast: flattened by the wind, speed lines
   - Stopped: sleeping, snoring, or setting up camp. A rest state, never a failure state.
 - Use partial refresh for small updates; full refresh periodically to clear ghosting.
 - Weather is out of scope for v1.
@@ -108,12 +108,13 @@ E-paper is not a video display. These limits shape the screen and the rider desi
 
 - Hello-world firmware exists in `src/main.cpp`. Builds cleanly with PlatformIO 6.2 (env `waveshare-epaper-154`). Not yet flashed; waiting for the board.
 - Screen drawing lives in `lib/screen/` and can be previewed as PNGs on a Mac (env `native`). A placeholder speed screen exists; it isn't shown by the firmware yet.
+- Side-view pixel rider (`lib/screen/rider.cpp`): a silly antenna blob on a bike. Three poses: stopped (dozing, one foot down, snot bubble, Zz), fast (squashed flat, antenna blown back, speed lines) and climbing (on a slope, tongue out, sweating). These are drafts; the final poses will be hand-drawn and dropped in `art/rider/`. Each pose is 48x48 pixels drawn at 2x, filling a 96x96 box, so a pose change is one partial refresh of that box. Not yet on the speed screen or the firmware.
 
 ## Next steps
 
 1. Flash hello-world. Set PSRAM mode for the board version first (V1: `qio_qspi`, V2: `qio_opi`).
 2. Deep sleep between screen updates.
-3. Rider sprite and the speed screen.
+3. Hand-drawn rider poses, then put the rider on the speed screen.
 4. GPS over UART, then log GPX to flash.
 5. Barometer over I2C for elevation.
 6. Sync and setup flow.
@@ -128,5 +129,7 @@ E-paper is not a video display. These limits shape the screen and the rider desi
 - GPX storage: flash or microSD? How to recover a file left unclosed by power loss?
 - Strava OAuth: the phone has no internet while joined to the device's AP. Do OAuth after the device joins home Wi-Fi, served at its local IP? Where does the client secret live?
 - Thesis says "rides you take alone"; target rider includes social group rides. Which is it?
+- Rider poses have one frame each. Does the fast rider need a second frame (pedal in another spot) to feel alive at 1 Hz, and is that worth the extra partial refresh?
+- Where does the rider sit next to the big number on a 200x200 screen? The rider box is 96x96.
 - Strava API app approval needed before sharing beyond personal use.
 - v1 hardware: which board and display? E-ink holds the image with no power and looks like paper, but limits animation to about one update per second. Memory-in-pixel LCDs (Sharp Memory LCD, JDI, as used in many sports watches and bike computers) are also sunlight-readable and low-power, and refresh fast enough for smooth animation with no ghosting, but they need some power to hold the image. Decide after the proof of concept.

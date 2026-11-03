@@ -54,5 +54,12 @@ int main(int argc, char **argv) {
         screen_draw_speed(canvas, speed);
         save(canvas, name);
     }
+
+    screen_draw_rider_preview(canvas, RIDER_STOPPED);
+    save(canvas, "rider_stopped");
+    screen_draw_rider_preview(canvas, RIDER_FAST);
+    save(canvas, "rider_fast");
+    screen_draw_rider_preview(canvas, RIDER_CLIMBING);
+    save(canvas, "rider_climbing");
     return 0;
 }
