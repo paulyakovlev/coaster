@@ -52,6 +52,17 @@ I2C addresses on the shared bus: PCF85063 RTC 0x51, SHTC3 0x70, BMP280 0x76 or 0
 - Use partial refresh for small updates; full refresh periodically to clear ghosting.
 - Weather is out of scope for v1.
 
+### Refresh budget
+
+E-paper is not a video display. These limits shape the screen and the rider design.
+
+- While riding: at most one partial refresh per second, in step with the 1 Hz GPS fix. Skip the refresh when nothing visible changed (for example, the rounded speed is the same).
+- Speed, rider and any other changes go out together in one partial refresh, never separately.
+- Full refresh (about 2 s, flashes black and white) clears ghosting. Do it when the rider stops; the "falling asleep" moment hides the flash. On long rides without stops, also do one periodically.
+- Waveshare's guidance is vague: one FAQ says to do a full refresh after 5 partials, and warns that skipping full refreshes worsens ghosting and can damage the panel. Other Waveshare manuals say "after several". The real interval is to be measured on the board.
+- The rider is a set of poses, not smooth animation: 1 to 2 frames per state, changing at most once per second. Keep the sprite compact; large black areas that move ghost the most.
+- Measure on the board: partial and full refresh time, partials before visible ghosting at 1 Hz, energy per refresh.
+
 ## Recording
 
 - Starts and stops with one button press.
