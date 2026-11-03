@@ -1,3 +1,4 @@
 .pio/
 vendor/
 .claude/settings.local.json
+sim_out/

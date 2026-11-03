@@ -62,6 +62,7 @@ E-paper is not a video display. These limits shape the screen and the rider desi
 - Waveshare's guidance is vague: one FAQ says to do a full refresh after 5 partials, and warns that skipping full refreshes worsens ghosting and can damage the panel. Other Waveshare manuals say "after several". The real interval is to be measured on the board.
 - The rider is a set of poses, not smooth animation: 1 to 2 frames per state, changing at most once per second. Keep the sprite compact; large black areas that move ghost the most.
 - Measure on the board: partial and full refresh time, partials before visible ghosting at 1 Hz, energy per refresh.
+- Screens can be previewed on a Mac without the board: `pio run -e native -t exec` writes PNGs to `sim_out/`.
 
 ## Recording
 
@@ -95,6 +96,7 @@ E-paper is not a video display. These limits shape the screen and the rider desi
 ## Current status
 
 - Hello-world firmware exists in `src/main.cpp`. Builds cleanly with PlatformIO 6.2 (env `waveshare-epaper-154`). Not yet flashed; waiting for the board.
+- Screen drawing lives in `lib/screen/` and can be previewed as PNGs on a Mac (env `native`). A placeholder speed screen exists; it isn't shown by the firmware yet.
 
 ## Next steps
 

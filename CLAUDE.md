@@ -6,11 +6,14 @@ Read `SPEC.md` before doing any work. It defines what the device does and what i
 
 - Build: `pio run`
 - Flash and monitor: `pio run -t upload && pio device monitor`
+- Preview screens on this computer: `pio run -e native -t exec` writes PNGs to `sim_out/`. Look at them after any screen change.
 - Board: Waveshare ESP32-S3-ePaper-1.54. Check the board version (V1 or V2) on the silkscreen before changing PSRAM settings in `platformio.ini`. The versions have different memory and are not interchangeable: V1 uses quad PSRAM (`board_build.arduino.memory_type = qio_qspi`), V2 uses octal PSRAM (`qio_opi`). Source: `CONFIG_SPIRAM_MODE_*` in the vendor's `02_Example/ESP-IDF/V1` and `V2` sdkconfigs.
 
 ## Where things live
 
 - `src/`: project firmware. This is where most changes go.
+- `lib/screen/`: all screen drawing, into a `GFXcanvas1`. No hardware calls here, so it also builds for the simulator.
+- `sim/`: screen simulator for the `native` env. `sim/stubs/` stands in for the Arduino headers Adafruit GFX needs.
 - `lib/epaper_driver/`, `lib/board_power/`: driver code copied from Waveshare's examples. Don't edit unless asked.
 - `vendor/`: full Waveshare repo, git-ignored. Use it as the reference for pins and examples.
 
