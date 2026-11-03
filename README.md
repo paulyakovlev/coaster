@@ -23,7 +23,13 @@ Refresh test (fake ride at 1 Hz, refresh timings and battery voltage over serial
 pio run -e refresh-test -t upload && pio device monitor
 ```
 
-Set PSRAM for your board version in `platformio.ini` before flashing. Check the silkscreen: V1 uses `qio_qspi`, V2 uses `qio_opi`.
+Barometer test (I2C scan, then altitude readings over serial):
+
+```sh
+pio run -e baro-test -t upload && pio device monitor
+```
+
+`platformio.ini` is set up for the V2 board (octal PSRAM, `qio_opi`). For a V1 board, change it to `qio_qspi`. To check a board, run `pio pkg exec -p tool-esptool -- esptool --port /dev/cu.usbmodem* flash-id`: V2 reports 8 MB embedded PSRAM.
 
 ## Preview screens without the board
 
@@ -35,6 +41,8 @@ open sim_out                 # look at them in Finder or Preview
 ```
 
 Images are 3x size (600x600 for the 200x200 panel), with gray "paper" and near-black "ink" to resemble e-ink. Rerun the command after each change; it takes a few seconds.
+
+The simulator also plays a scripted ride through the real UI code (start, page changes, a climb and a stop, pause, finish) and saves the frames that matter to `sim_out/session/`, with how many refreshes it took.
 
 To preview a new screen or state, add a drawing function to `lib/screen/` and call it from `main()` in `sim/main.cpp`, followed by `save(canvas, "name")`.
 
@@ -50,4 +58,4 @@ pio test -e native
 
 ## Status
 
-Early. Hello-world firmware builds, and screens can be previewed on a computer. See "Current status" in [SPEC.md](SPEC.md).
+Early. The firmware runs the full UI on the board with a fake ride standing in for the GPS. See "Current status" in [SPEC.md](SPEC.md).

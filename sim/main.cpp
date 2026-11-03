@@ -9,7 +9,10 @@
 #include <vector>
 
 #include "png.h"
+#include "fake_ride.h"
+#include "ride.h"
 #include "screen.h"
+#include "ui.h"
 
 #define SCALE 3  // 200x200 is tiny on a laptop screen
 
@@ -38,6 +41,90 @@ static void save(GFXcanvas1 &canvas, const char *name) {
     }
 }
 
+static const char *const POSE_NAMES[RIDER_POSE_COUNT] = {
+    "stopped", "fast", "climbing", "cruising", "bed", "waking", "coffee", "couch"};
+static const char *const STATE_NAMES[] = {"idle", "waking", "riding", "paused", "finished"};
+static const char *const PAGE_NAMES[]  = {"rider", "dashboard", "elevation"};
+
+// Button presses in the scripted session, by second
+static const struct {
+    uint32_t t;
+    UiInput  in;
+} SCRIPT[] = {
+    {5, UI_IN_PWR_LONG},                                   // start
+    {40, UI_IN_PAGE}, {100, UI_IN_PAGE},                   // dashboard, elevation
+    {130, UI_IN_PAGE},                                     // back to the rider
+    {240, UI_IN_PWR}, {255, UI_IN_PAGE}, {270, UI_IN_PWR}, // pause, page, resume
+    {320, UI_IN_PWR}, {330, UI_IN_PWR_LONG},               // pause, finish
+    {340, UI_IN_PAGE}, {345, UI_IN_PAGE}, {350, UI_IN_PAGE},  // summary pages
+    {360, UI_IN_PWR_LONG},                                 // back to bed
+};
+
+// Drive the real UI with the fake ride and the script. Saves full refreshes,
+// frames right after a button press, and pose changes to sim_out/session/,
+// and counts refreshes.
+static void session(GFXcanvas1 &canvas) {
+    char dir[256];
+    snprintf(dir, sizeof(dir), "%s/session", out_dir);
+    mkdir(dir, 0755);
+
+    Ui        ui;
+    RideStats stats;
+    FakeRide  ride;
+    bool      recording = false;
+    ride_stats_init(&stats);
+    ui_init(&ui, 0);
+
+    int counts[3] = {0, 0, 0};
+    RiderPose last_pose = RIDER_POSE_COUNT;
+    const uint32_t end_s = 370;
+
+    for (uint32_t t = 0; t <= end_s; t++) {
+        uint32_t now = t * 1000;
+        bool pressed = false;
+        for (const auto &step : SCRIPT) {
+            if (step.t != t) continue;
+            pressed = true;
+            switch (ui_input(&ui, step.in, now)) {
+            case UI_ACT_START:
+                ride_stats_init(&stats);
+                fake_ride_init(&ride, 1793690142u);
+                recording = true;
+                break;
+            case UI_ACT_PAUSE:
+                ride_stats_pause(&stats);
+                recording = false;
+                break;
+            case UI_ACT_RESUME: recording = true; break;
+            case UI_ACT_FINISH: recording = false; break;
+            case UI_ACT_NONE: break;
+            }
+        }
+
+        if (recording) {
+            GpsFix fix;
+            fake_ride_next(&ride, &fix);
+            ride_stats_update(&stats, &fix);
+            ui_ride_update(&ui, &stats, now);
+        }
+        ui_tick(&ui, now);
+
+        UiRefresh r = ui_render(&ui, &stats, canvas);
+        counts[r]++;
+        bool pose_changed = ui.shown.pose != last_pose;
+        last_pose = ui.shown.pose;
+        if (r == UI_REFRESH_FULL || (r != UI_REFRESH_NONE && (pressed || pose_changed))) {
+            char name[96];
+            snprintf(name, sizeof(name), "session/%03u_%s_%s_%s_%s", t, STATE_NAMES[ui.state],
+                     PAGE_NAMES[ui.page], ui.shown.pose < RIDER_POSE_COUNT ? POSE_NAMES[ui.shown.pose] : "norider",
+                     r == UI_REFRESH_FULL ? "full" : "partial");
+            save(canvas, name);
+        }
+    }
+    printf("session: %u s, %d full refreshes, %d partial, %d skipped (nothing changed)\n", end_s + 1,
+           counts[UI_REFRESH_FULL], counts[UI_REFRESH_PARTIAL], counts[UI_REFRESH_NONE]);
+}
+
 int main(int argc, char **argv) {
     if (argc > 1) out_dir = argv[1];
     mkdir(out_dir, 0755);
@@ -47,26 +134,25 @@ int main(int argc, char **argv) {
     screen_draw_hello(canvas);
     save(canvas, "hello");
 
-    // Each speed with a pose that could go with it, with and without rider
-    const struct {
-        float speed;
-        RiderPose pose;
-    } rides[] = {{0, RIDER_STOPPED}, {8.4f, RIDER_CLIMBING}, {23.6f, RIDER_FAST}, {47, RIDER_FAST}};
-    for (const auto &ride : rides) {
+    for (int pose = 0; pose < RIDER_POSE_COUNT; pose++) {
         char name[32];
-        snprintf(name, sizeof(name), "speed_%ld", lroundf(ride.speed));
-        screen_draw_speed(canvas, ride.speed, false, ride.pose);
-        save(canvas, name);
-        snprintf(name, sizeof(name), "speed_%ld_rider", lroundf(ride.speed));
-        screen_draw_speed(canvas, ride.speed, true, ride.pose);
+        snprintf(name, sizeof(name), "rider_%s", POSE_NAMES[pose]);
+        screen_draw_rider_preview(canvas, (RiderPose)pose);
         save(canvas, name);
     }
 
-    screen_draw_rider_preview(canvas, RIDER_STOPPED);
-    save(canvas, "rider_stopped");
-    screen_draw_rider_preview(canvas, RIDER_FAST);
-    save(canvas, "rider_fast");
-    screen_draw_rider_preview(canvas, RIDER_CLIMBING);
-    save(canvas, "rider_climbing");
+    // Longest values each page can show
+    screen_draw_page(canvas, "18", "mph", true, RIDER_CRUISING);
+    save(canvas, "page_rider");
+    screen_draw_dashboard(canvas, "18", "mph", "12.4", "mi", "1:07", "h:mm");
+    save(canvas, "page_dashboard");
+    screen_draw_dashboard(canvas, "8", "mph", "123", "mi", "10:05", "h:mm");
+    save(canvas, "page_dashboard_long");
+    screen_draw_dashboard(canvas, "14", "avg mph", "31.2", "mi", "2:15", "h:mm");
+    save(canvas, "page_dashboard_summary");
+    screen_draw_page(canvas, "1234", "ft up", false, RIDER_CRUISING);
+    save(canvas, "page_elevation");
+
+    session(canvas);
     return 0;
 }

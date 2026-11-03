@@ -14,6 +14,10 @@ double ride_distance_m(double lat1, double lon1, double lat2, double lon2) {
     return 2 * EARTH_RADIUS_M * asin(sqrt(a));
 }
 
+float pressure_to_altitude_m(float pressure_pa, float sea_level_pa) {
+    return 44330.0f * (1.0f - powf(pressure_pa / sea_level_pa, 0.190295f));
+}
+
 void ride_stats_init(RideStats *s) {
     memset(s, 0, sizeof(*s));
 }
@@ -45,6 +49,16 @@ void ride_stats_update(RideStats *s, const GpsFix *fix) {
     }
     if (fix->time <= s->last_time) return;  // repeated or out of order
 
+    if (s->reanchor) {
+        s->reanchor   = false;
+        s->last_time  = fix->time;
+        s->anchor_lat = fix->lat;
+        s->anchor_lon = fix->lon;
+        s->speed_mps  = fix->speed_mps;
+        s->ele_m      = s->ele_ref = fix->ele_m;
+        return;
+    }
+
     uint32_t dt = fix->time - s->last_time;
     s->last_time = fix->time;
     s->speed_mps = fix->speed_mps;
@@ -62,6 +76,11 @@ void ride_stats_update(RideStats *s, const GpsFix *fix) {
     if (fix->speed_mps < RIDE_MAX_SPEED_MPS && fix->speed_mps > s->max_speed_mps) {
         s->max_speed_mps = fix->speed_mps;
     }
+}
+
+void ride_stats_pause(RideStats *s) {
+    s->reanchor  = true;
+    s->speed_mps = 0;
 }
 
 uint32_t ride_stats_elapsed_s(const RideStats *s) {

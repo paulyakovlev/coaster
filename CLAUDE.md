@@ -26,7 +26,7 @@ Read `SPEC.md` before doing any work. It defines what the device does and what i
 - This is a battery device. Avoid dynamic allocation in the main loop and keep the screen refresh rate low.
 - Use partial refresh for small updates and a full refresh only occasionally, to clear ghosting.
 - Don't add features listed as out of scope in `SPEC.md` (navigation, app, Bluetooth sensors, weather).
-- Keep the device's on-screen text short. One main number at a time.
+- Keep the device's on-screen text short. One main number per page; the dashboard page is the only exception (two small corner numbers).
 
 ## Before finishing a task
 

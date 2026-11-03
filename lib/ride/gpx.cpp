@@ -34,6 +34,10 @@ size_t gpx_footer(char *buf, size_t size) {
     return fit(snprintf(buf, size, "</trkseg></trk>\n</gpx>\n"), size);
 }
 
+size_t gpx_new_segment(char *buf, size_t size) {
+    return fit(snprintf(buf, size, "</trkseg><trkseg>\n"), size);
+}
+
 // Days since 1970-01-01 for a civil date, and back. Howard Hinnant's
 // algorithms (http://howardhinnant.github.io/date_algorithms.html).
 static int32_t days_from_civil(int y, int m, int d) {

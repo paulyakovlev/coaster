@@ -22,9 +22,9 @@
 
 #define TICK_MS 1000
 
-// Waveshare's FAQ suggests a full refresh after 5 partials; the real number
-// is what this test is for.
-static int  full_every = 5;
+// Waveshare's FAQ suggests a full refresh after 5 partials. On the V2 board,
+// 30 showed little ghosting; the upper limit is still to be found.
+static int  full_every = 30;
 static bool show_rider = true;
 static bool paused     = false;
 
@@ -43,11 +43,18 @@ static float fake_speed(uint32_t t) {
     return s < 45 ? s : 90 - s;
 }
 
-// Test mapping only; the real rule waits on the UI and on cruising art
+// Test mapping only; the real pose rule is in lib/ui
 static RiderPose fake_pose(float speed) {
     if (speed < 1) return RIDER_STOPPED;
     if (speed < 15) return RIDER_CLIMBING;
+    if (speed < 30) return RIDER_CRUISING;
     return RIDER_FAST;
+}
+
+static void draw(float speed, RiderPose pose) {
+    char value[8];
+    snprintf(value, sizeof(value), "%d", (int)lroundf(speed));
+    screen_draw_page(canvas, value, "km/h", show_rider, pose);
 }
 
 static void handle_serial() {
@@ -68,7 +75,7 @@ void setup() {
     Serial.begin(115200);
     analogReadResolution(12);
 
-    screen_draw_speed(canvas, 0, show_rider, RIDER_STOPPED);
+    draw(0, RIDER_STOPPED);
     uint32_t t0 = millis();
     display_begin(canvas);
     Serial.printf("# begin (init + full refresh) %lu ms\n", millis() - t0);
@@ -89,7 +96,7 @@ void loop() {
     tick++;
     float     speed = fake_speed(tick);
     RiderPose pose  = fake_pose(speed);
-    screen_draw_speed(canvas, speed, show_rider, pose);
+    draw(speed, pose);
 
     bool full = force_full || (full_every > 0 && partials >= (uint32_t)full_every);
     uint32_t t0 = millis();

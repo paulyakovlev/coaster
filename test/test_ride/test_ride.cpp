@@ -236,6 +236,27 @@ static void test_stats_long_gap(void) {
     TEST_ASSERT_EQUAL_UINT32(RIDE_MAX_GAP_S, s.moving_s);
 }
 
+static void test_stats_pause(void) {
+    RideStats s;
+    ride_stats_init(&s);
+    GpsFix f = fix_at(T0, 45, 7, 5, 100);
+    ride_stats_update(&s, &f);
+    f = fix_at(T0 + 10, 45 + 50 / METERS_PER_DEG_LAT, 7, 5, 100);
+    ride_stats_update(&s, &f);
+
+    // Pause, take a train 20 km and 200 m up, resume
+    ride_stats_pause(&s);
+    f = fix_at(T0 + 3600, 45 + 20000 / METERS_PER_DEG_LAT, 7, 5, 300);
+    ride_stats_update(&s, &f);
+    f = fix_at(T0 + 3610, 45 + 20050 / METERS_PER_DEG_LAT, 7, 5, 300);
+    ride_stats_update(&s, &f);
+
+    TEST_ASSERT_DOUBLE_WITHIN(1, 100, s.distance_m);
+    TEST_ASSERT_EQUAL_UINT32(20, s.moving_s);
+    TEST_ASSERT_FLOAT_WITHIN(0.01f, 0, s.ele_gain_m);
+    TEST_ASSERT_EQUAL_UINT32(3610, ride_stats_elapsed_s(&s));  // elapsed includes the pause
+}
+
 static void test_elevation_noise_on_flat(void) {
     RideStats s;
     ride_stats_init(&s);
@@ -293,6 +314,9 @@ static void test_gpx(void) {
 
     n = gpx_footer(buf, GPX_FOOTER_MAX);
     TEST_ASSERT_EQUAL_STRING("</trkseg></trk>\n</gpx>\n", buf);
+
+    gpx_new_segment(buf, GPX_SEGMENT_MAX);
+    TEST_ASSERT_EQUAL_STRING("</trkseg><trkseg>\n", buf);
 }
 
 int main(int, char **) {
@@ -309,6 +333,7 @@ int main(int, char **) {
     RUN_TEST(test_stats_stop_adds_no_distance);
     RUN_TEST(test_stats_ignores_invalid_and_glitches);
     RUN_TEST(test_stats_long_gap);
+    RUN_TEST(test_stats_pause);
     RUN_TEST(test_elevation_noise_on_flat);
     RUN_TEST(test_elevation_hills);
     RUN_TEST(test_gpx);

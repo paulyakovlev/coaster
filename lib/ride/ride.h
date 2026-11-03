@@ -73,6 +73,7 @@ struct RideStats {
 
     // Internal
     bool     started;
+    bool     reanchor;               // paused: next fix starts fresh
     double   anchor_lat, anchor_lon;  // last point distance was measured from
     float    ele_ref;                 // low point the next climb counts from
 };
@@ -82,6 +83,11 @@ void ride_stats_init(RideStats *s);
 // Add one fix. Invalid fixes are ignored.
 void ride_stats_update(RideStats *s, const GpsFix *fix);
 
+// The rider paused by hand. Don't feed fixes while paused; the first fix
+// after resuming adds no distance, moving time or climbing, so a train ride
+// or a lift during the pause doesn't count.
+void ride_stats_pause(RideStats *s);
+
 uint32_t ride_stats_elapsed_s(const RideStats *s);
 
 // Average over moving time, like Strava
@@ -89,6 +95,18 @@ float ride_stats_avg_speed_mps(const RideStats *s);
 
 // Great-circle distance in meters
 double ride_distance_m(double lat1, double lon1, double lat2, double lon2);
+
+// ---- Barometric altitude ------------------------------------------------------
+
+// Standard sea-level pressure. The real value moves with the weather by up to
+// a few kPa, which shifts absolute altitude by tens of meters but barely
+// changes elevation gain over a ride.
+#define SEA_LEVEL_PA 101325.0f
+
+// International barometric formula (standard atmosphere, troposphere).
+// To use the barometer for elevation, put this into GpsFix.ele_m before
+// ride_stats_update().
+float pressure_to_altitude_m(float pressure_pa, float sea_level_pa);
 
 // ---- GPX ------------------------------------------------------------------------
 
@@ -101,10 +119,15 @@ double ride_distance_m(double lat1, double lon1, double lat2, double lon2);
 #define GPX_HEADER_MAX 320
 #define GPX_POINT_MAX  128
 #define GPX_FOOTER_MAX 32
+#define GPX_SEGMENT_MAX 24
 
 size_t gpx_header(char *buf, size_t size, uint32_t start_time);
 size_t gpx_point(char *buf, size_t size, const GpsFix *fix);
 size_t gpx_footer(char *buf, size_t size);
+
+// After a pause: close the track segment and open a new one, so the gap
+// isn't drawn as a straight line
+size_t gpx_new_segment(char *buf, size_t size);
 
 // ---- Time -------------------------------------------------------------------
 
