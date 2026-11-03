@@ -109,6 +109,7 @@ E-paper is not a video display. These limits shape the screen and the rider desi
 - Hello-world firmware exists in `src/main.cpp`. Builds cleanly with PlatformIO 6.2 (env `waveshare-epaper-154`). Not yet flashed; waiting for the board.
 - Screen drawing lives in `lib/screen/` and can be previewed as PNGs on a Mac (env `native`). A placeholder speed screen exists, with the rider optional: with it, the number shrinks to the top and the rider sits at the bottom. It isn't shown by the main firmware yet.
 - Panel glue (power, init, full and partial refresh) lives in `lib/display/`, shared by the firmware and the refresh test. The vendor driver always sends the whole frame; a "partial" refresh uses the partial waveform, so only changed pixels move.
+- Ride recording logic (`lib/ride/`), hardware-independent and unit-tested on a Mac (`pio test -e native`): an NMEA parser (RMC + GGA from the NEO-6M, any talker), ride stats (distance, elapsed and moving time, average and max speed, elevation gain) and a GPX 1.1 writer that formats one line per trackpoint into a caller buffer. No allocation. Not yet wired to a UART, a file or the screen. Tuning: below 3 km/h counts as stopped (no distance, no moving time); speeds over 120 km/h are ignored as glitches; elevation is smoothed (about 10 s) with a 3 m threshold.
 - Refresh test firmware (`hwtest/refresh_test.cpp`, env `refresh-test`): a fake ride at one partial refresh per second, with the rider changing pose, and a full refresh every N partials. Prints refresh time and battery voltage as CSV over serial; serial commands change N and turn the rider on or off. Builds; not yet run on the board.
 - Side-view pixel rider (`lib/screen/rider.cpp`): a silly antenna blob on a bike. Three poses: stopped (dozing, one foot down, snot bubble, Zz), fast (squashed flat, antenna blown back, speed lines) and climbing (on a slope, tongue out, sweating). These are drafts; the final poses will be hand-drawn and dropped in `art/rider/`. Each pose is 48x48 pixels drawn at 2x, filling a 96x96 box, so a pose change is one partial refresh of that box. Not yet on the speed screen or the firmware.
 
@@ -118,7 +119,7 @@ E-paper is not a video display. These limits shape the screen and the rider desi
 2. Run the refresh test: refresh times, partials before visible ghosting, whether 1 Hz feels alive, readability at a glance.
 3. Deep sleep between screen updates.
 4. Hand-drawn rider poses; decide the screen layout.
-5. GPS over UART, then log GPX to flash.
+5. GPS over UART into `lib/ride`, then write GPX to flash or microSD.
 6. Barometer over I2C for elevation.
 7. Sync and setup flow.
 
@@ -129,7 +130,9 @@ E-paper is not a video display. These limits shape the screen and the rider desi
 - How to switch between screens (speed, distance, time, elevation)? Second button, long press, or auto-rotate?
 - GPS UART pins: which free GPIOs?
 - Power while recording: 1 Hz logging needs the chip awake or in light sleep. Deep sleep only when idle? Switch GPS power off when not recording?
-- GPX storage: flash or microSD? How to recover a file left unclosed by power loss?
+- GPX storage: flash or microSD? Recovery after power loss: each trackpoint is one line, so trim a partial last line and append the footer. When does that run: at boot, or before upload?
+- Elevation gain uses GPS altitude until the barometer is in, and GPS altitude wanders by several meters. Strava recalculates elevation for GPX from devices without a barometer, so the on-device number may differ from Strava's. Is that acceptable for v1?
+- Stop threshold of 3 km/h: right for slow climbs and walking the bike? Check against a real ride.
 - Strava OAuth: the phone has no internet while joined to the device's AP. Do OAuth after the device joins home Wi-Fi, served at its local IP? Where does the client secret live?
 - Thesis says "rides you take alone"; target rider includes social group rides. Which is it?
 - Rider poses have one frame each. Does the fast rider need a second frame (pedal in another spot) to feel alive at 1 Hz, and is that worth the extra partial refresh?

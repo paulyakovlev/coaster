@@ -40,6 +40,14 @@ To preview a new screen or state, add a drawing function to `lib/screen/` and ca
 
 The PNGs show layout only. Refresh speed, flashing and ghosting need the real panel; see "Refresh budget" in [SPEC.md](SPEC.md).
 
+## Unit tests
+
+Ride logic in `lib/ride/` (GPS parsing, ride stats, GPX) is tested on your computer:
+
+```sh
+pio test -e native
+```
+
 ## Status
 
 Early. Hello-world firmware builds, and screens can be previewed on a computer. See "Current status" in [SPEC.md](SPEC.md).
