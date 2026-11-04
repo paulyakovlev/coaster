@@ -4,20 +4,31 @@
 // per second. GPX lines are formatted but not stored until there's storage.
 //
 // Buttons: BOOT = next page. PWR = ride control (see lib/ui/ui.h).
+// Starting a ride plays one short sound; nothing else beeps (group rides).
 
 #include <Arduino.h>
 #include <Adafruit_GFX.h>
+#include <Wire.h>
 #include "button.h"
 #include "display.h"
 #include "fake_ride.h"
 #include "ride.h"
 #include "screen.h"
+#include "sound.h"
 #include "ui.h"
 
 // Both buttons pull the pin low when pressed.
 // Source: vendor/.../Arduino/*/user_config.h and src/button_bsp/button_bsp.c
 #define BOOT_BUTTON_PIN 0
 #define PWR_BUTTON_PIN  18
+
+// Shared I2C bus: audio codec now, barometer later.
+// Source: vendor/.../Arduino/*/user_config.h
+#define I2C_SDA_PIN     47
+#define I2C_SCL_PIN     48
+
+// Codec DAC volume: 0xBF = 0 dB, 0.5 dB per step, 0xFF = +32 dB
+#define SOUND_VOLUME    0xBF
 
 #define BUTTON_POLL_MS  10
 #define FIX_INTERVAL_MS 1000
@@ -32,6 +43,7 @@ static FakeRide      fake;
 static bool          recording = false;
 static uint32_t      next_fix_ms;
 static QueueHandle_t inputs;
+static QueueHandle_t sounds;
 
 static const char *const STATE_NAMES[] = {"idle", "waking", "riding", "paused", "finished"};
 
@@ -57,6 +69,24 @@ static void button_task(void *) {
         case BUTTON_NONE:  break;
         }
         vTaskDelay(pdMS_TO_TICKS(BUTTON_POLL_MS));
+    }
+}
+
+// The sound plays in its own task, so it doesn't hold up the screen refresh
+// to the waking rider. The codec and amplifier are powered only while sounds play.
+static void sound_task(void *) {
+    SoundId id;
+    for (;;) {
+        xQueueReceive(sounds, &id, portMAX_DELAY);
+        if (!sound_begin()) {
+            Serial.println("# sound: codec did not respond");
+            sound_end();
+            continue;
+        }
+        do {
+            sound_play(id);
+        } while (xQueueReceive(sounds, &id, 0) == pdTRUE);
+        sound_end();
     }
 }
 
@@ -93,14 +123,19 @@ void setup() {
     Serial.begin(115200);
     pinMode(BOOT_BUTTON_PIN, INPUT_PULLUP);
     pinMode(PWR_BUTTON_PIN, INPUT_PULLUP);
+    Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN, 400000);
 
     ride_stats_init(&stats);
     ui_init(&ui, millis());
     ui_render(&ui, &stats, canvas);
     display_begin(canvas);  // full refresh with the idle screen
+    sound_end();            // display power setup leaves the audio rail on
+    sound_set_volume(SOUND_VOLUME);
 
     inputs = xQueueCreate(8, sizeof(UiInput));
     xTaskCreate(button_task, "buttons", 2048, nullptr, 2, nullptr);
+    sounds = xQueueCreate(4, sizeof(SoundId));
+    xTaskCreate(sound_task, "sound", 4096, nullptr, 1, nullptr);
 }
 
 void loop() {
@@ -108,8 +143,13 @@ void loop() {
 
     UiInput in;
     while (xQueueReceive(inputs, &in, 0) == pdTRUE) {
-        UiState before = ui.state;
-        apply(ui_input(&ui, in, now), now);
+        UiState  before = ui.state;
+        UiAction action = ui_input(&ui, in, now);
+        apply(action, now);
+        if (action == UI_ACT_START) {
+            SoundId id = SOUND_START;
+            xQueueSend(sounds, &id, 0);
+        }
         if (ui.state != before) Serial.printf("# %s\n", STATE_NAMES[ui.state]);
     }
 
