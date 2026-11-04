@@ -165,18 +165,19 @@ static void play(SoundPlayer *p) {
     for (int i = 0; i < 8; i++) i2s.write((const uint8_t *)stereo, sizeof(stereo));
 }
 
-void sound_play(SoundId id) {
+static void glide(uint16_t hz, uint16_t to_hz, uint16_t ms) {
     if (!running) return;
     SoundPlayer p;
-    sound_start(&p, id, AMPLITUDE);
+    sound_init(&p, hz, to_hz, ms, AMPLITUDE);
     play(&p);
 }
 
+void sound_play_start() {
+    glide(SOUND_START_HZ, SOUND_START_TO_HZ, SOUND_START_MS);
+}
+
 void sound_tone(uint16_t hz, uint16_t ms) {
-    if (!running) return;
-    SoundNote note = {hz, hz, ms};
-    SoundPlayer p  = {&note, 1, 0, 0, 0, AMPLITUDE};
-    play(&p);
+    glide(hz, hz, ms);
 }
 
 void sound_set_volume(uint8_t reg) {

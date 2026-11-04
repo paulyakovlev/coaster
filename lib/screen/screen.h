@@ -13,9 +13,6 @@
 #define SCREEN_WHITE  1
 #define SCREEN_BLACK  0
 
-void screen_draw_hello(GFXcanvas1 &canvas);
-
-
 // Side-view pixel rider. Every pose fills the same box, so changing pose is
 // one partial refresh of that box.
 #define RIDER_WIDTH  96

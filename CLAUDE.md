@@ -28,6 +28,18 @@ Read `SPEC.md` before doing any work. It defines what the device does and what i
 - Don't add features listed as out of scope in `SPEC.md` (navigation, app, Bluetooth sensors, weather).
 - Keep the device's on-screen text short. One main number per page; the dashboard page is the only exception (two small corner numbers).
 
+## Keep it simple
+
+This is a proof of concept. Build the smallest thing that answers the question at hand.
+
+- Before writing code, take the first option that works: skip it if nobody asked for it; reuse what's already in `lib/`; use the Arduino/ESP-IDF or C standard library; use an installed library. Only then write new code, and keep it minimal.
+- No abstraction, option, config switch or "for later" generality nobody asked for. Write for the one case that exists (one sound, one board, one file format), not a family of them.
+- Don't add a library for a few lines of code. Ask before adding any dependency.
+- Keep the existing style: plain C-style modules with structs and functions, no classes or layers on top.
+- Deleting code beats adding it. Remove code that's left over once its feature is gone.
+- A known shortcut gets a one-line comment: `shortcut: <the limit>, <when to upgrade>`.
+- Never cut: source comments for pins and register values, error handling that prevents data loss (GPX files), or unit tests for parsing and ride math.
+
 ## Before finishing a task
 
 - Build the firmware and confirm it compiles.

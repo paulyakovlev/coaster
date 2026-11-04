@@ -47,16 +47,6 @@ static void print_number_centered(GFXcanvas1 &canvas, const char *text, int16_t 
     print_number(canvas, text, (SCREEN_WIDTH - number_width(text, size)) / 2, y, size);
 }
 
-void screen_draw_hello(GFXcanvas1 &canvas) {
-    canvas.fillScreen(SCREEN_WHITE);
-    canvas.setTextColor(SCREEN_BLACK);
-    canvas.setTextWrap(false);
-    canvas.setTextSize(2);
-
-    // Center vertically too: 7 px glyph height at size 2
-    print_centered(canvas, "hello rider.", (SCREEN_HEIGHT - 14) / 2);
-}
-
 // Largest text size, up to max_size, at which text fits in width pixels.
 // Built-in font: 6 px per character at size 1, 7 px tall.
 static uint8_t fit_size(const char *text, uint8_t max_size, int16_t width = SCREEN_WIDTH - 8) {

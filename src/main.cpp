@@ -43,7 +43,7 @@ static FakeRide      fake;
 static bool          recording = false;
 static uint32_t      next_fix_ms;
 static QueueHandle_t inputs;
-static QueueHandle_t sounds;
+static TaskHandle_t  sound_task_handle;
 
 static const char *const STATE_NAMES[] = {"idle", "waking", "riding", "paused", "finished"};
 
@@ -72,20 +72,16 @@ static void button_task(void *) {
     }
 }
 
-// The sound plays in its own task, so it doesn't hold up the screen refresh
-// to the waking rider. The codec and amplifier are powered only while sounds play.
+// The start sound plays in its own task, so it doesn't hold up the screen
+// refresh to the waking rider. The codec and amplifier are powered only while it plays.
 static void sound_task(void *) {
-    SoundId id;
     for (;;) {
-        xQueueReceive(sounds, &id, portMAX_DELAY);
-        if (!sound_begin()) {
+        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+        if (sound_begin()) {
+            sound_play_start();
+        } else {
             Serial.println("# sound: codec did not respond");
-            sound_end();
-            continue;
         }
-        do {
-            sound_play(id);
-        } while (xQueueReceive(sounds, &id, 0) == pdTRUE);
         sound_end();
     }
 }
@@ -134,8 +130,7 @@ void setup() {
 
     inputs = xQueueCreate(8, sizeof(UiInput));
     xTaskCreate(button_task, "buttons", 2048, nullptr, 2, nullptr);
-    sounds = xQueueCreate(4, sizeof(SoundId));
-    xTaskCreate(sound_task, "sound", 4096, nullptr, 1, nullptr);
+    xTaskCreate(sound_task, "sound", 4096, nullptr, 1, &sound_task_handle);
 }
 
 void loop() {
@@ -146,10 +141,7 @@ void loop() {
         UiState  before = ui.state;
         UiAction action = ui_input(&ui, in, now);
         apply(action, now);
-        if (action == UI_ACT_START) {
-            SoundId id = SOUND_START;
-            xQueueSend(sounds, &id, 0);
-        }
+        if (action == UI_ACT_START) xTaskNotifyGive(sound_task_handle);
         if (ui.state != before) Serial.printf("# %s\n", STATE_NAMES[ui.state]);
     }
 

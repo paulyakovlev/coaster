@@ -139,9 +139,6 @@ int main(int argc, char **argv) {
 
     GFXcanvas1 canvas(SCREEN_WIDTH, SCREEN_HEIGHT);
 
-    screen_draw_hello(canvas);
-    save(canvas, "hello");
-
     for (int pose = 0; pose < RIDER_POSE_COUNT; pose++) {
         for (uint8_t frame = 0; frame < RIDER_FRAMES; frame++) {
             char name[32];

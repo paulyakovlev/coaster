@@ -8,10 +8,10 @@
 void setUp() {}
 void tearDown() {}
 
-// Every sample of a sound, in chunks like the player writes them
-static size_t render(SoundId id, int16_t *out, size_t max) {
+// Every sample of the start sound, in chunks like the player writes them
+static size_t render(int16_t *out, size_t max) {
     SoundPlayer p;
-    sound_start(&p, id, 0.5f);
+    sound_init(&p, SOUND_START_HZ, SOUND_START_TO_HZ, SOUND_START_MS, 0.5f);
     size_t total = 0, n;
     while ((n = sound_fill(&p, out + total, max - total < 100 ? max - total : 100)) > 0) {
         total += n;
@@ -21,24 +21,19 @@ static size_t render(SoundId id, int16_t *out, size_t max) {
 
 static int16_t buf[SOUND_RATE];  // up to 1 s
 
-static void test_length_matches_notes(void) {
-    for (int id = 0; id < SOUND_COUNT; id++) {
-        size_t n = render((SoundId)id, buf, SOUND_RATE);
-        TEST_ASSERT_EQUAL_UINT32(sound_length_ms((SoundId)id) * SOUND_RATE / 1000, n);
-    }
+static void test_length(void) {
+    TEST_ASSERT_EQUAL_UINT32(SOUND_START_MS * SOUND_RATE / 1000, render(buf, SOUND_RATE));
 }
 
-// Fades keep each sound from clicking: it starts and ends at silence
+// Fades keep the sound from clicking: it starts and ends at silence
 static void test_starts_and_ends_quiet(void) {
-    for (int id = 0; id < SOUND_COUNT; id++) {
-        size_t n = render((SoundId)id, buf, SOUND_RATE);
-        TEST_ASSERT_INT16_WITHIN(500, 0, buf[0]);
-        TEST_ASSERT_INT16_WITHIN(500, 0, buf[n - 1]);
-    }
+    size_t n = render(buf, SOUND_RATE);
+    TEST_ASSERT_INT16_WITHIN(500, 0, buf[0]);
+    TEST_ASSERT_INT16_WITHIN(500, 0, buf[n - 1]);
 }
 
 static void test_amplitude(void) {
-    size_t n    = render(SOUND_START, buf, SOUND_RATE);
+    size_t n    = render(buf, SOUND_RATE);
     int    peak = 0;
     for (size_t i = 0; i < n; i++) peak = abs(buf[i]) > peak ? abs(buf[i]) : peak;
     TEST_ASSERT_INT_WITHIN(400, 16383, peak);
@@ -52,13 +47,13 @@ static int crossings(const int16_t *s, size_t n) {
 }
 
 static void test_start_rises(void) {
-    size_t n = render(SOUND_START, buf, SOUND_RATE);
+    size_t n = render(buf, SOUND_RATE);
     TEST_ASSERT_GREATER_THAN(crossings(buf, n / 2), crossings(buf + n / 2, n - n / 2));
 }
 
 int main() {
     UNITY_BEGIN();
-    RUN_TEST(test_length_matches_notes);
+    RUN_TEST(test_length);
     RUN_TEST(test_starts_and_ends_quiet);
     RUN_TEST(test_amplitude);
     RUN_TEST(test_start_rises);
