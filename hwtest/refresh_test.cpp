@@ -1,6 +1,10 @@
 // Refresh test: one partial refresh per second, like the 1 Hz GPS fix, with
-// the speed screen and the rider changing pose. A full refresh every N
-// partials. Prints one CSV line per refresh over serial.
+// the speed screen and the rider changing pose and animating (two frames). A
+// full refresh every N partials. Prints one CSV line per refresh over serial.
+//
+// Animation-only mode ('a') holds the speed and pose, so only the rider's two
+// frames alternate: the worst case for ghosting. Watch the rider box and note
+// the partials column when ghosting starts to bother you.
 //
 // Flash: pio run -e refresh-test -t upload && pio device monitor
 //
@@ -10,6 +14,7 @@
 //   -   full refresh every 5 fewer partials (0 = never)
 //   r   rider on/off
 //   p   pause/resume
+//   a   animation only on/off (speed and pose held)
 
 #include <Arduino.h>
 #include <Adafruit_GFX.h>
@@ -27,6 +32,7 @@
 static int  full_every = 30;
 static bool show_rider = true;
 static bool paused     = false;
+static bool anim_only  = false;
 
 static GFXcanvas1 canvas(SCREEN_WIDTH, SCREEN_HEIGHT);
 
@@ -51,10 +57,10 @@ static RiderPose fake_pose(float speed) {
     return RIDER_FAST;
 }
 
-static void draw(float speed, RiderPose pose) {
+static void draw(float speed, RiderPose pose, uint8_t frame) {
     char value[8];
     snprintf(value, sizeof(value), "%d", (int)lroundf(speed));
-    screen_draw_page(canvas, value, "km/h", show_rider, pose);
+    screen_draw_page(canvas, value, "km/h", show_rider, pose, frame);
 }
 
 static void handle_serial() {
@@ -65,9 +71,11 @@ static void handle_serial() {
         case '-': full_every = full_every >= 5 ? full_every - 5 : 0; break;
         case 'r': show_rider = !show_rider; break;
         case 'p': paused = !paused; break;
+        case 'a': anim_only = !anim_only; break;
         default: continue;  // Enter, stray bytes
         }
-        Serial.printf("# full_every=%d rider=%d paused=%d\n", full_every, show_rider, paused);
+        Serial.printf("# full_every=%d rider=%d paused=%d anim_only=%d\n", full_every, show_rider,
+                      paused, anim_only);
     }
 }
 
@@ -75,11 +83,11 @@ void setup() {
     Serial.begin(115200);
     analogReadResolution(12);
 
-    draw(0, RIDER_STOPPED);
+    draw(0, RIDER_STOPPED, 0);
     uint32_t t0 = millis();
     display_begin(canvas);
     Serial.printf("# begin (init + full refresh) %lu ms\n", millis() - t0);
-    Serial.println("# tick,type,speed,pose,refresh_ms,overrun,vbat_mv,full_every");
+    Serial.println("# tick,type,speed,pose,frame,partials,refresh_ms,overrun,vbat_mv,full_every");
 
     next_tick = millis() + TICK_MS;
 }
@@ -93,10 +101,13 @@ void loop() {
     next_tick += TICK_MS;
     if (paused) return;
 
+    static uint32_t ride_tick = 0;  // frozen in animation-only mode
+    if (!anim_only) ride_tick++;
     tick++;
-    float     speed = fake_speed(tick);
+    float     speed = fake_speed(ride_tick);
     RiderPose pose  = fake_pose(speed);
-    draw(speed, pose);
+    uint8_t   frame = tick % RIDER_FRAMES;
+    draw(speed, pose, frame);
 
     bool full = force_full || (full_every > 0 && partials >= (uint32_t)full_every);
     uint32_t t0 = millis();
@@ -115,6 +126,6 @@ void loop() {
     if (overrun) next_tick = millis() + TICK_MS;
 
     uint32_t vbat_mv = analogReadMilliVolts(VBAT_ADC_PIN) * 2;
-    Serial.printf("%lu,%s,%d,%d,%lu,%d,%lu,%d\n", tick, full ? "full" : "partial",
-                  (int)lroundf(speed), pose, ms, overrun, vbat_mv, full_every);
+    Serial.printf("%lu,%s,%d,%d,%d,%lu,%lu,%d,%lu,%d\n", tick, full ? "full" : "partial",
+                  (int)lroundf(speed), pose, frame, partials, ms, overrun, vbat_mv, full_every);
 }

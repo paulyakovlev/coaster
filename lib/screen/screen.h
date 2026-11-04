@@ -33,15 +33,18 @@ enum RiderPose {
     RIDER_POSE_COUNT
 };
 
+// Frames per pose, for a little movement (see the refresh budget in SPEC.md)
+#define RIDER_FRAMES 2
+
 // Draw the rider with the box's top-left corner at (x, y). Clears the box first.
-void screen_draw_rider(GFXcanvas1 &canvas, int16_t x, int16_t y, RiderPose pose);
+void screen_draw_rider(GFXcanvas1 &canvas, int16_t x, int16_t y, RiderPose pose, uint8_t frame);
 
 // Same at any whole-number scale: 2 fills the 96x96 box, 3 is 144x144
 void screen_draw_rider_scaled(GFXcanvas1 &canvas, int16_t x, int16_t y, RiderPose pose,
-                              int16_t scale);
+                              uint8_t frame, int16_t scale);
 
 // The rider alone, centered, for previewing poses.
-void screen_draw_rider_preview(GFXcanvas1 &canvas, RiderPose pose);
+void screen_draw_rider_preview(GFXcanvas1 &canvas, RiderPose pose, uint8_t frame);
 
 // A page: one big number with its unit underneath. With the rider, the
 // number sits in the top half and the rider box at the bottom, at
@@ -50,7 +53,7 @@ void screen_draw_rider_preview(GFXcanvas1 &canvas, RiderPose pose);
 #define RIDER_Y (SCREEN_HEIGHT - RIDER_HEIGHT - 4)
 
 void screen_draw_page(GFXcanvas1 &canvas, const char *value, const char *unit, bool show_rider,
-                      RiderPose pose);
+                      RiderPose pose, uint8_t frame);
 
 // The dashboard: one big number in the middle, two small ones in the top
 // corners, each with its unit underneath. No rider.
@@ -60,4 +63,4 @@ void screen_draw_dashboard(GFXcanvas1 &canvas, const char *main, const char *mai
 
 // A scene: the rider large (3x), with a short caption underneath. For the
 // moments without a number, like idle and waking up.
-void screen_draw_scene(GFXcanvas1 &canvas, RiderPose pose, const char *caption);
+void screen_draw_scene(GFXcanvas1 &canvas, RiderPose pose, uint8_t frame, const char *caption);

@@ -76,6 +76,7 @@ static void session(GFXcanvas1 &canvas) {
     ui_init(&ui, 0);
 
     int counts[3] = {0, 0, 0};
+    int by_state[5][3] = {};  // [UiState][UiRefresh]
     RiderPose last_pose = RIDER_POSE_COUNT;
     const uint32_t end_s = 370;
 
@@ -111,6 +112,7 @@ static void session(GFXcanvas1 &canvas) {
 
         UiRefresh r = ui_render(&ui, &stats, canvas);
         counts[r]++;
+        by_state[ui.state][r]++;
         bool pose_changed = ui.shown.pose != last_pose;
         last_pose = ui.shown.pose;
         if (r == UI_REFRESH_FULL || (r != UI_REFRESH_NONE && (pressed || pose_changed))) {
@@ -123,6 +125,12 @@ static void session(GFXcanvas1 &canvas) {
     }
     printf("session: %u s, %d full refreshes, %d partial, %d skipped (nothing changed)\n", end_s + 1,
            counts[UI_REFRESH_FULL], counts[UI_REFRESH_PARTIAL], counts[UI_REFRESH_NONE]);
+    for (int st = 0; st < 5; st++) {
+        int total = by_state[st][0] + by_state[st][1] + by_state[st][2];
+        printf("  %-8s %3d s: %2d full, %3d partial, %3d skipped\n", STATE_NAMES[st], total,
+               by_state[st][UI_REFRESH_FULL], by_state[st][UI_REFRESH_PARTIAL],
+               by_state[st][UI_REFRESH_NONE]);
+    }
 }
 
 int main(int argc, char **argv) {
@@ -135,14 +143,16 @@ int main(int argc, char **argv) {
     save(canvas, "hello");
 
     for (int pose = 0; pose < RIDER_POSE_COUNT; pose++) {
-        char name[32];
-        snprintf(name, sizeof(name), "rider_%s", POSE_NAMES[pose]);
-        screen_draw_rider_preview(canvas, (RiderPose)pose);
-        save(canvas, name);
+        for (uint8_t frame = 0; frame < RIDER_FRAMES; frame++) {
+            char name[32];
+            snprintf(name, sizeof(name), "rider_%s_%u", POSE_NAMES[pose], frame + 1);
+            screen_draw_rider_preview(canvas, (RiderPose)pose, frame);
+            save(canvas, name);
+        }
     }
 
     // Longest values each page can show
-    screen_draw_page(canvas, "18", "mph", true, RIDER_CRUISING);
+    screen_draw_page(canvas, "18", "mph", true, RIDER_CRUISING, 0);
     save(canvas, "page_rider");
     screen_draw_dashboard(canvas, "18", "mph", "12.4", "mi", "1:07", "h:mm");
     save(canvas, "page_dashboard");
@@ -150,7 +160,7 @@ int main(int argc, char **argv) {
     save(canvas, "page_dashboard_long");
     screen_draw_dashboard(canvas, "14", "avg mph", "31.2", "mi", "2:15", "h:mm");
     save(canvas, "page_dashboard_summary");
-    screen_draw_page(canvas, "1234", "ft up", false, RIDER_CRUISING);
+    screen_draw_page(canvas, "1234", "ft up", false, RIDER_CRUISING, 0);
     save(canvas, "page_elevation");
 
     session(canvas);

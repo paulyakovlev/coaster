@@ -312,6 +312,81 @@ static void test_refresh_policy(void) {
     TEST_ASSERT_EQUAL(1, fulls);
 }
 
+// ---- Animation ----------------------------------------------------------------
+
+static void test_riding_animation_steps_with_fixes(void) {
+    Ui ui = riding_ui();
+    RideStats s;
+    ride_at(&s, 20, 0, 100, 0);
+    uint32_t now = UI_WAKING_MS;
+    ui_render(&ui, &s, canvas);
+
+    // Cruising: a new frame every fix, and speed + frame go out together in
+    // one refresh per fix, never two
+    for (int i = 0; i < 6; i++) {
+        uint8_t before = ui.frame;
+        ride_for(&ui, &s, &now, i % 2 ? 20 : 22, 0, 1);
+        TEST_ASSERT_NOT_EQUAL(before, ui.frame);
+        TEST_ASSERT_EQUAL(UI_REFRESH_PARTIAL, ui_render(&ui, &s, canvas));
+        TEST_ASSERT_EQUAL(UI_REFRESH_NONE, ui_render(&ui, &s, canvas));
+    }
+
+    // Climbing: every second fix (a slow grind)
+    ride_for(&ui, &s, &now, 10, 0.07f, 20);
+    TEST_ASSERT_EQUAL(RIDER_CLIMBING, ui.pose);
+    uint8_t f0 = ui.frame;
+    int changes = 0;
+    for (int i = 0; i < 8; i++) {
+        ride_for(&ui, &s, &now, 10, 0.07f, 1);
+        if (ui.frame != f0) changes++;
+        f0 = ui.frame;
+    }
+    TEST_ASSERT_EQUAL(4, changes);
+}
+
+static void test_no_animation_off_the_rider_page(void) {
+    Ui ui = riding_ui();
+    RideStats s;
+    ride_at(&s, 20, 0, 100, 0);
+    uint32_t now = UI_WAKING_MS;
+    ui_input(&ui, UI_IN_PAGE, now);  // dashboard
+    ui_render(&ui, &s, canvas);
+    s.speed_mps = 8.0f;
+    ui_render(&ui, &s, canvas);
+    // Same speed, frames keep stepping: nothing to refresh
+    for (int i = 0; i < 5; i++) {
+        now += 1000;
+        ui_ride_update(&ui, &s, now);
+        TEST_ASSERT_EQUAL(UI_REFRESH_NONE, ui_render(&ui, &s, canvas));
+    }
+}
+
+static void test_rest_animation_and_timeout(void) {
+    Ui ui;
+    ui_init(&ui, 0);
+    RideStats s;
+    ride_stats_init(&s);
+    TEST_ASSERT_EQUAL(UI_REFRESH_FULL, ui_render(&ui, &s, canvas));
+
+    // Asleep in bed: a new frame every 2 s
+    ui_tick(&ui, 1999);
+    TEST_ASSERT_EQUAL(UI_REFRESH_NONE, ui_render(&ui, &s, canvas));
+    ui_tick(&ui, 2000);
+    TEST_ASSERT_EQUAL(UI_REFRESH_PARTIAL, ui_render(&ui, &s, canvas));
+    ui_tick(&ui, 4000);
+    TEST_ASSERT_EQUAL(UI_REFRESH_PARTIAL, ui_render(&ui, &s, canvas));
+
+    // After the timeout he holds still on frame 0 and the screen stops
+    // refreshing
+    int refreshes = 0;
+    for (uint32_t t = 4000; t <= UI_ANIM_TIMEOUT_MS + 60000; t += 500) {
+        ui_tick(&ui, t);
+        if (ui_render(&ui, &s, canvas) != UI_REFRESH_NONE && t > UI_ANIM_TIMEOUT_MS) refreshes++;
+    }
+    TEST_ASSERT_EQUAL(0, ui.frame);
+    TEST_ASSERT_TRUE(refreshes <= 1);  // at most the step back to frame 0
+}
+
 int main(int, char **) {
     UNITY_BEGIN();
     RUN_TEST(test_button_short_press);
@@ -324,5 +399,8 @@ int main(int, char **) {
     RUN_TEST(test_page_contents);
     RUN_TEST(test_pose_changes_and_holds);
     RUN_TEST(test_refresh_policy);
+    RUN_TEST(test_riding_animation_steps_with_fixes);
+    RUN_TEST(test_no_animation_off_the_rider_page);
+    RUN_TEST(test_rest_animation_and_timeout);
     return UNITY_END();
 }

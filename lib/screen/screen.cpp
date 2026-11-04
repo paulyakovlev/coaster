@@ -71,7 +71,7 @@ static uint8_t fit_size(const char *text, uint8_t max_size, int16_t width = SCRE
 #define UNIT_SIZE 3
 
 void screen_draw_page(GFXcanvas1 &canvas, const char *value, const char *unit, bool show_rider,
-                      RiderPose pose) {
+                      RiderPose pose, uint8_t frame) {
     canvas.fillScreen(SCREEN_WHITE);
     canvas.setTextColor(SCREEN_BLACK);
     canvas.setTextWrap(false);
@@ -90,7 +90,7 @@ void screen_draw_page(GFXcanvas1 &canvas, const char *value, const char *unit, b
     print_number_centered(canvas, value, 36 - 7 * size / 2, size);
     canvas.setTextSize(UNIT_SIZE);
     print_centered(canvas, unit, 70);
-    screen_draw_rider(canvas, RIDER_X, RIDER_Y, pose);
+    screen_draw_rider(canvas, RIDER_X, RIDER_Y, pose, frame);
 }
 
 // Print text with its top edge at y, left-aligned at x or right-aligned to x
@@ -130,10 +130,10 @@ void screen_draw_dashboard(GFXcanvas1 &canvas, const char *main, const char *mai
     print_centered(canvas, main_unit, 160);
 }
 
-void screen_draw_scene(GFXcanvas1 &canvas, RiderPose pose, const char *caption) {
+void screen_draw_scene(GFXcanvas1 &canvas, RiderPose pose, uint8_t frame, const char *caption) {
     canvas.fillScreen(SCREEN_WHITE);
     const int16_t scale = 3;
-    screen_draw_rider_scaled(canvas, (SCREEN_WIDTH - 48 * scale) / 2, 8, pose, scale);
+    screen_draw_rider_scaled(canvas, (SCREEN_WIDTH - 48 * scale) / 2, 8, pose, frame, scale);
 
     canvas.setTextColor(SCREEN_BLACK);
     canvas.setTextWrap(false);

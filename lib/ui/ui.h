@@ -61,6 +61,13 @@ enum UiRefresh { UI_REFRESH_NONE, UI_REFRESH_PARTIAL, UI_REFRESH_FULL };
 #define UI_GRADE_WINDOW     30
 #define UI_GRADE_MIN_M      30.0f
 
+// Animation: the rider swaps between two frames. Riding poses step every
+// N GPS fixes, so the rider and the numbers change in the same refresh. Rest
+// poses (bed, waking, coffee, couch) step on a timer and stop after
+// UI_ANIM_TIMEOUT_MS, ending on frame 0, so an idle device stops refreshing.
+// Pages without the rider don't animate. Periods are in ui.cpp.
+#define UI_ANIM_TIMEOUT_MS  (5 * 60 * 1000UL)
+
 #define UI_VALUE_MAX        8
 
 // Everything that decides what is on screen. Equal frames need no refresh.
@@ -68,6 +75,7 @@ struct UiFrame {
     UiState   state;
     UiPage    page;
     RiderPose pose;     // RIDER_POSE_COUNT when the page has no rider
+    uint8_t   frame;    // animation frame, 0 when the page has no rider
     bool      stopped;  // riding but stopped, on any page (for the full refresh)
     char      main[UI_VALUE_MAX];
     char      left[UI_VALUE_MAX];
@@ -82,6 +90,10 @@ struct Ui {
     RiderPose pose;              // riding pose currently shown
     RiderPose candidate;         // pose the ride suggests
     uint32_t  candidate_since_ms;
+
+    uint8_t   frame;             // animation frame of the current pose
+    uint32_t  frame_since_ms;    // rest poses: when the frame last changed
+    uint8_t   fixes_on_frame;    // riding poses: fixes since the frame changed
 
     // Recent (distance, elevation) per fix, for the grade
     float     hist_dist[UI_GRADE_WINDOW];
@@ -101,7 +113,7 @@ UiAction ui_input(Ui *ui, UiInput in, uint32_t now_ms);
 // Once per new fix while riding, after updating the stats
 void ui_ride_update(Ui *ui, const RideStats *stats, uint32_t now_ms);
 
-// Timers (waking up). Call often.
+// Timers (waking up, rest animations). Call often.
 void ui_tick(Ui *ui, uint32_t now_ms);
 
 // Draw the current frame into the canvas if it changed since the last call
