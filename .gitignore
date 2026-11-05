@@ -2,3 +2,7 @@
 vendor/
 .claude/settings.local.json
 sim_out/
+
+# Strava client secret, see src/strava_secrets.example.h
+src/strava_secrets.h
+.DS_Store

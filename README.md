@@ -29,6 +29,12 @@ Barometer test (I2C scan, then altitude readings over serial):
 pio run -e baro-test -t upload && pio device monitor
 ```
 
+Sound test (the ride start sound through the onboard speaker amplifier; needs a speaker plugged in):
+
+```sh
+pio run -e sound-test -t upload && pio device monitor
+```
+
 `platformio.ini` is set up for the V2 board (octal PSRAM, `qio_opi`). For a V1 board, change it to `qio_qspi`. To check a board, run `pio pkg exec -p tool-esptool -- esptool --port /dev/cu.usbmodem* flash-id`: V2 reports 8 MB embedded PSRAM.
 
 ## Preview screens without the board

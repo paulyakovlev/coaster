@@ -146,6 +146,26 @@ static void test_nmea_gn_talker(void) {
     TEST_ASSERT_DOUBLE_WITHIN(1e-6, -0.125, f.lon);
 }
 
+// ATGM336H style: NMEA 4.1 (an extra navigation status field at the end of
+// RMC), 3-decimal seconds, and text sentences mixed in, which are ignored
+static void test_nmea_atgm336h(void) {
+    NmeaParser p;
+    nmea_init(&p);
+    GpsFix f = {};
+    char txt[100], rmc[100], gga[100];
+    sentence(txt, sizeof(txt), "GPTXT,01,01,01,ANTENNA OK");
+    sentence(rmc, sizeof(rmc), "GNRMC,071542.000,A,5130.0000,N,00007.5000,W,10.00,0.00,031126,,,A,V");
+    sentence(gga, sizeof(gga), "GNGGA,071542.000,5130.0000,N,00007.5000,W,1,12,0.9,35.0,M,45.0,M,,");
+    TEST_ASSERT_EQUAL(0, feed(&p, txt, &f));
+    TEST_ASSERT_EQUAL(0, feed(&p, rmc, &f));
+    TEST_ASSERT_EQUAL(0, feed(&p, txt, &f));
+    TEST_ASSERT_EQUAL(1, feed(&p, gga, &f));
+    TEST_ASSERT_TRUE(f.valid);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-6, 51.5, f.lat);
+    TEST_ASSERT_EQUAL(12, f.sats);
+    TEST_ASSERT_FLOAT_WITHIN(0.01f, 35.0f, f.ele_m);
+}
+
 // ---- Stats ------------------------------------------------------------------
 
 static void test_distance(void) {
@@ -328,6 +348,7 @@ int main(int, char **) {
     RUN_TEST(test_nmea_mismatched_seconds);
     RUN_TEST(test_nmea_no_fix);
     RUN_TEST(test_nmea_gn_talker);
+    RUN_TEST(test_nmea_atgm336h);
     RUN_TEST(test_distance);
     RUN_TEST(test_stats_steady_ride);
     RUN_TEST(test_stats_stop_adds_no_distance);

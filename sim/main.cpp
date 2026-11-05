@@ -42,9 +42,37 @@ static void save(GFXcanvas1 &canvas, const char *name) {
 }
 
 static const char *const POSE_NAMES[RIDER_POSE_COUNT] = {
-    "stopped", "fast", "climbing", "cruising", "bed", "waking", "coffee", "couch"};
-static const char *const STATE_NAMES[] = {"idle", "waking", "riding", "paused", "finished"};
+    "stopped", "fast", "climbing", "cruising", "bed", "waking", "coffee"};
+static const char *const STATE_NAMES[] = {"idle", "waking", "riding", "paused", "finished",
+                                          "sleeping", "setup"};
 static const char *const PAGE_NAMES[]  = {"rider", "dashboard", "elevation"};
+
+// shortcut: a made-up QR code for the layout only, it doesn't scan; the
+// firmware makes real ones with the ESP32's qrcode component, which doesn't
+// build here. Same size as the firmware's: version 2, 25x25.
+#define FAKE_QR_SIZE 25
+static const uint8_t *fake_qr() {
+    static uint8_t m[FAKE_QR_SIZE * FAKE_QR_SIZE];
+    uint32_t r = 12345;
+    for (int i = 0; i < FAKE_QR_SIZE * FAKE_QR_SIZE; i++) {
+        r = r * 1103515245 + 12345;
+        m[i] = (r >> 16) & 1;
+    }
+    // The three corner squares
+    const int corners[3][2] = {{0, 0}, {FAKE_QR_SIZE - 7, 0}, {0, FAKE_QR_SIZE - 7}};
+    for (const auto &c : corners) {
+        for (int y = -1; y < 8; y++) {
+            for (int x = -1; x < 8; x++) {
+                int px = c[0] + x, py = c[1] + y;
+                if (px < 0 || py < 0 || px >= FAKE_QR_SIZE || py >= FAKE_QR_SIZE) continue;
+                bool ring = x == 0 || x == 6 || y == 0 || y == 6;
+                bool core = x >= 2 && x <= 4 && y >= 2 && y <= 4;
+                m[py * FAKE_QR_SIZE + px] = x >= 0 && x <= 6 && y >= 0 && y <= 6 && (ring || core);
+            }
+        }
+    }
+    return m;
+}
 
 // Button presses in the scripted session, by second
 static const struct {
@@ -57,7 +85,7 @@ static const struct {
     {240, UI_IN_PWR}, {255, UI_IN_PAGE}, {270, UI_IN_PWR}, // pause, page, resume
     {320, UI_IN_PWR}, {330, UI_IN_PWR_LONG},               // pause, finish
     {340, UI_IN_PAGE}, {345, UI_IN_PAGE}, {350, UI_IN_PAGE},  // summary pages
-    {360, UI_IN_PWR_LONG},                                 // back to bed
+    {360, UI_IN_PWR_LONG},                                 // back to idle
 };
 
 // Drive the real UI with the fake ride and the script. Saves full refreshes,
@@ -74,12 +102,16 @@ static void session(GFXcanvas1 &canvas) {
     bool      recording = false;
     ride_stats_init(&stats);
     ui_init(&ui, 0);
+    ui.battery_pct = 76;
 
     int counts[3] = {0, 0, 0};
+    int by_state[7][3] = {};  // [UiState][UiRefresh]
     RiderPose last_pose = RIDER_POSE_COUNT;
-    const uint32_t end_s = 370;
+    uint32_t end_s = 0;
 
-    for (uint32_t t = 0; t <= end_s; t++) {
+    // Runs until the rider falls asleep after the ride, as the board would
+    for (uint32_t t = 0; ui.shown.state != UI_SLEEPING || !ui.has_shown; t++) {
+        end_s = t;
         uint32_t now = t * 1000;
         bool pressed = false;
         for (const auto &step : SCRIPT) {
@@ -111,6 +143,7 @@ static void session(GFXcanvas1 &canvas) {
 
         UiRefresh r = ui_render(&ui, &stats, canvas);
         counts[r]++;
+        by_state[ui.state][r]++;
         bool pose_changed = ui.shown.pose != last_pose;
         last_pose = ui.shown.pose;
         if (r == UI_REFRESH_FULL || (r != UI_REFRESH_NONE && (pressed || pose_changed))) {
@@ -123,6 +156,12 @@ static void session(GFXcanvas1 &canvas) {
     }
     printf("session: %u s, %d full refreshes, %d partial, %d skipped (nothing changed)\n", end_s + 1,
            counts[UI_REFRESH_FULL], counts[UI_REFRESH_PARTIAL], counts[UI_REFRESH_NONE]);
+    for (int st = 0; st < 7; st++) {
+        int total = by_state[st][0] + by_state[st][1] + by_state[st][2];
+        printf("  %-8s %3d s: %2d full, %3d partial, %3d skipped\n", STATE_NAMES[st], total,
+               by_state[st][UI_REFRESH_FULL], by_state[st][UI_REFRESH_PARTIAL],
+               by_state[st][UI_REFRESH_NONE]);
+    }
 }
 
 int main(int argc, char **argv) {
@@ -131,18 +170,17 @@ int main(int argc, char **argv) {
 
     GFXcanvas1 canvas(SCREEN_WIDTH, SCREEN_HEIGHT);
 
-    screen_draw_hello(canvas);
-    save(canvas, "hello");
-
     for (int pose = 0; pose < RIDER_POSE_COUNT; pose++) {
-        char name[32];
-        snprintf(name, sizeof(name), "rider_%s", POSE_NAMES[pose]);
-        screen_draw_rider_preview(canvas, (RiderPose)pose);
-        save(canvas, name);
+        for (uint8_t frame = 0; frame < RIDER_FRAMES; frame++) {
+            char name[32];
+            snprintf(name, sizeof(name), "rider_%s_%u", POSE_NAMES[pose], frame + 1);
+            screen_draw_rider_preview(canvas, (RiderPose)pose, frame);
+            save(canvas, name);
+        }
     }
 
     // Longest values each page can show
-    screen_draw_page(canvas, "18", "mph", true, RIDER_CRUISING);
+    screen_draw_page(canvas, "18", "mph", true, RIDER_CRUISING, 0, RIDER_X);
     save(canvas, "page_rider");
     screen_draw_dashboard(canvas, "18", "mph", "12.4", "mi", "1:07", "h:mm");
     save(canvas, "page_dashboard");
@@ -150,8 +188,15 @@ int main(int argc, char **argv) {
     save(canvas, "page_dashboard_long");
     screen_draw_dashboard(canvas, "14", "avg mph", "31.2", "mi", "2:15", "h:mm");
     save(canvas, "page_dashboard_summary");
-    screen_draw_page(canvas, "1234", "ft up", false, RIDER_CRUISING);
+    screen_draw_dashboard(canvas, "1234", "ft up", "5280", "ft alt", "76%", "battery");
     save(canvas, "page_elevation");
+
+    screen_draw_qr(canvas, fake_qr(), FAKE_QR_SIZE, "scan to set up");
+    save(canvas, "setup_wifi");
+    screen_draw_qr(canvas, nullptr, 0, "joining wifi");
+    save(canvas, "setup_joining");
+    screen_draw_qr(canvas, fake_qr(), FAKE_QR_SIZE, "scan for Strava");
+    save(canvas, "setup_strava");
 
     session(canvas);
     return 0;

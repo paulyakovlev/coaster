@@ -47,16 +47,6 @@ static void print_number_centered(GFXcanvas1 &canvas, const char *text, int16_t 
     print_number(canvas, text, (SCREEN_WIDTH - number_width(text, size)) / 2, y, size);
 }
 
-void screen_draw_hello(GFXcanvas1 &canvas) {
-    canvas.fillScreen(SCREEN_WHITE);
-    canvas.setTextColor(SCREEN_BLACK);
-    canvas.setTextWrap(false);
-    canvas.setTextSize(2);
-
-    // Center vertically too: 7 px glyph height at size 2
-    print_centered(canvas, "hello rider.", (SCREEN_HEIGHT - 14) / 2);
-}
-
 // Largest text size, up to max_size, at which text fits in width pixels.
 // Built-in font: 6 px per character at size 1, 7 px tall.
 static uint8_t fit_size(const char *text, uint8_t max_size, int16_t width = SCREEN_WIDTH - 8) {
@@ -71,7 +61,7 @@ static uint8_t fit_size(const char *text, uint8_t max_size, int16_t width = SCRE
 #define UNIT_SIZE 3
 
 void screen_draw_page(GFXcanvas1 &canvas, const char *value, const char *unit, bool show_rider,
-                      RiderPose pose) {
+                      RiderPose pose, uint8_t frame, int16_t rider_x) {
     canvas.fillScreen(SCREEN_WHITE);
     canvas.setTextColor(SCREEN_BLACK);
     canvas.setTextWrap(false);
@@ -90,7 +80,12 @@ void screen_draw_page(GFXcanvas1 &canvas, const char *value, const char *unit, b
     print_number_centered(canvas, value, 36 - 7 * size / 2, size);
     canvas.setTextSize(UNIT_SIZE);
     print_centered(canvas, unit, 70);
-    screen_draw_rider(canvas, RIDER_X, RIDER_Y, pose);
+    // Climbing rides up the slope: the art's road rises about 1 px per 7
+    // to the left; 1 per 8 keeps to the 2x pixel grid. Stays clear of the
+    // unit: the box only rises past RIDER_Y - 9 once it's left of the text.
+    int16_t y = RIDER_Y;
+    if (pose == RIDER_CLIMBING) y -= (RIDER_X - rider_x) / 8;
+    screen_draw_rider(canvas, rider_x, y, pose, frame);
 }
 
 // Print text with its top edge at y, left-aligned at x or right-aligned to x
@@ -130,10 +125,40 @@ void screen_draw_dashboard(GFXcanvas1 &canvas, const char *main, const char *mai
     print_centered(canvas, main_unit, 160);
 }
 
-void screen_draw_scene(GFXcanvas1 &canvas, RiderPose pose, const char *caption) {
+void screen_draw_scene(GFXcanvas1 &canvas, RiderPose pose, uint8_t frame, const char *caption,
+                       const char *corner) {
     canvas.fillScreen(SCREEN_WHITE);
     const int16_t scale = 3;
-    screen_draw_rider_scaled(canvas, (SCREEN_WIDTH - 48 * scale) / 2, 8, pose, scale);
+    screen_draw_rider_scaled(canvas, (SCREEN_WIDTH - 48 * scale) / 2, 8, pose, frame, scale);
+
+    canvas.setTextColor(SCREEN_BLACK);
+    canvas.setTextWrap(false);
+    canvas.setTextSize(fit_size(caption, 2));
+    print_centered(canvas, caption, 172);
+
+    // Small text in the top-right corner, clear of the rider art (battery %)
+    canvas.setTextSize(2);
+    canvas.setCursor(SCREEN_WIDTH - (int16_t)strlen(corner) * 12 - 2, 2);
+    canvas.print(corner);
+}
+
+void screen_draw_qr(GFXcanvas1 &canvas, const uint8_t *modules, uint8_t size,
+                    const char *caption) {
+    canvas.fillScreen(SCREEN_WHITE);
+    if (size > 0) {
+        // Above the caption, with the 4-module white border scanners need
+        const int16_t area  = 166;
+        int16_t       scale = area / (size + 8);
+        int16_t       x0    = (SCREEN_WIDTH - size * scale) / 2;
+        int16_t       y0    = (area - size * scale) / 2 + 2;
+        for (int16_t y = 0; y < size; y++) {
+            for (int16_t x = 0; x < size; x++) {
+                if (modules[y * size + x]) {
+                    canvas.fillRect(x0 + x * scale, y0 + y * scale, scale, scale, SCREEN_BLACK);
+                }
+            }
+        }
+    }
 
     canvas.setTextColor(SCREEN_BLACK);
     canvas.setTextWrap(false);
