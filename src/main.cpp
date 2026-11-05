@@ -6,6 +6,7 @@
 // by a power cut is repaired at the next boot.
 //
 // Buttons: BOOT = next page. PWR = ride control (see lib/ui/ui.h).
+// BOOT long press from idle opens Wi-Fi setup (src/wifi_setup.cpp).
 // Starting a ride plays one short sound; nothing else beeps (group rides).
 // Idle for a while: the sleep screen, then deep sleep until a button press.
 
@@ -25,6 +26,7 @@
 #include "screen.h"
 #include "sound.h"
 #include "ui.h"
+#include "wifi_setup.h"
 
 // Both buttons pull the pin low when pressed.
 // Source: vendor/.../Arduino/*/user_config.h and src/button_bsp/button_bsp.c
@@ -60,6 +62,7 @@ static RideLog       ride_log;
 static QueueHandle_t inputs;
 static TaskHandle_t  sound_task_handle;
 static uint32_t      battery_read_ms;
+static bool          setup_open = false;
 
 #ifdef FAKE_RIDE
 
@@ -124,7 +127,7 @@ static bool next_fix(uint32_t, GpsFix *fix) {
 #endif
 
 static const char *const STATE_NAMES[] = {"idle", "waking", "riding", "paused", "finished",
-                                          "sleeping"};
+                                          "sleeping", "setup"};
 
 // Screen refreshes block for 0.6-2 s, so buttons are read in their own task
 // and queued; no press is lost during a refresh.
@@ -138,9 +141,10 @@ static void button_task(void *) {
     for (;;) {
         now = millis();
         UiInput in;
-        if (button_update(&boot, digitalRead(BOOT_BUTTON_PIN) == LOW, now) == BUTTON_PRESS) {
-            in = UI_IN_PAGE;
-            xQueueSend(inputs, &in, 0);
+        switch (button_update(&boot, digitalRead(BOOT_BUTTON_PIN) == LOW, now)) {
+        case BUTTON_PRESS: in = UI_IN_PAGE; xQueueSend(inputs, &in, 0); break;
+        case BUTTON_LONG:  in = UI_IN_PAGE_LONG; xQueueSend(inputs, &in, 0); break;
+        case BUTTON_NONE:  break;
         }
         switch (button_update(&pwr, digitalRead(PWR_BUTTON_PIN) == LOW, now)) {
         case BUTTON_PRESS: in = UI_IN_PWR; xQueueSend(inputs, &in, 0); break;
@@ -320,6 +324,19 @@ void loop() {
 
     UiState before = ui.state;
     ui_tick(&ui, now);
+
+    // Wi-Fi setup runs while the UI shows its QR code
+    if (ui.state == UI_SETUP && !setup_open) {
+        ui.qr = wifi_setup_start(&ui.qr_size);
+        setup_open = ui.qr != nullptr;
+        if (!setup_open) ui_setup_done(&ui, now);
+    } else if (ui.state == UI_SETUP && wifi_setup_poll()) {
+        ui_setup_done(&ui, now);
+    }
+    if (ui.state != UI_SETUP && setup_open) {
+        wifi_setup_stop();
+        setup_open = false;
+    }
     if (ui.state != before) Serial.printf("# %s\n", STATE_NAMES[ui.state]);
 
     UiRefresh r = ui_render(&ui, &stats, canvas);

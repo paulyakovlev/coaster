@@ -65,3 +65,8 @@ void screen_draw_dashboard(GFXcanvas1 &canvas, const char *main, const char *mai
 // the top-right corner (the battery), or "".
 void screen_draw_scene(GFXcanvas1 &canvas, RiderPose pose, uint8_t frame, const char *caption,
                        const char *corner);
+
+// A QR code as big as fits, with a short caption underneath. modules is
+// size x size bytes, row by row, 1 = black. size 0 draws the caption only.
+void screen_draw_qr(GFXcanvas1 &canvas, const uint8_t *modules, uint8_t size,
+                    const char *caption);

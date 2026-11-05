@@ -141,3 +141,27 @@ void screen_draw_scene(GFXcanvas1 &canvas, RiderPose pose, uint8_t frame, const 
     canvas.setCursor(SCREEN_WIDTH - (int16_t)strlen(corner) * 12 - 2, 2);
     canvas.print(corner);
 }
+
+void screen_draw_qr(GFXcanvas1 &canvas, const uint8_t *modules, uint8_t size,
+                    const char *caption) {
+    canvas.fillScreen(SCREEN_WHITE);
+    if (size > 0) {
+        // Above the caption, with the 4-module white border scanners need
+        const int16_t area  = 166;
+        int16_t       scale = area / (size + 8);
+        int16_t       x0    = (SCREEN_WIDTH - size * scale) / 2;
+        int16_t       y0    = (area - size * scale) / 2 + 2;
+        for (int16_t y = 0; y < size; y++) {
+            for (int16_t x = 0; x < size; x++) {
+                if (modules[y * size + x]) {
+                    canvas.fillRect(x0 + x * scale, y0 + y * scale, scale, scale, SCREEN_BLACK);
+                }
+            }
+        }
+    }
+
+    canvas.setTextColor(SCREEN_BLACK);
+    canvas.setTextWrap(false);
+    canvas.setTextSize(fit_size(caption, 2));
+    print_centered(canvas, caption, 172);
+}

@@ -44,8 +44,35 @@ static void save(GFXcanvas1 &canvas, const char *name) {
 static const char *const POSE_NAMES[RIDER_POSE_COUNT] = {
     "stopped", "fast", "climbing", "cruising", "bed", "waking", "coffee"};
 static const char *const STATE_NAMES[] = {"idle", "waking", "riding", "paused", "finished",
-                                          "sleeping"};
+                                          "sleeping", "setup"};
 static const char *const PAGE_NAMES[]  = {"rider", "dashboard", "elevation"};
+
+// shortcut: a made-up QR code for the layout only, it doesn't scan; the
+// firmware makes real ones with the ESP32's qrcode component, which doesn't
+// build here. Same size as the firmware's: version 2, 25x25.
+#define FAKE_QR_SIZE 25
+static const uint8_t *fake_qr() {
+    static uint8_t m[FAKE_QR_SIZE * FAKE_QR_SIZE];
+    uint32_t r = 12345;
+    for (int i = 0; i < FAKE_QR_SIZE * FAKE_QR_SIZE; i++) {
+        r = r * 1103515245 + 12345;
+        m[i] = (r >> 16) & 1;
+    }
+    // The three corner squares
+    const int corners[3][2] = {{0, 0}, {FAKE_QR_SIZE - 7, 0}, {0, FAKE_QR_SIZE - 7}};
+    for (const auto &c : corners) {
+        for (int y = -1; y < 8; y++) {
+            for (int x = -1; x < 8; x++) {
+                int px = c[0] + x, py = c[1] + y;
+                if (px < 0 || py < 0 || px >= FAKE_QR_SIZE || py >= FAKE_QR_SIZE) continue;
+                bool ring = x == 0 || x == 6 || y == 0 || y == 6;
+                bool core = x >= 2 && x <= 4 && y >= 2 && y <= 4;
+                m[py * FAKE_QR_SIZE + px] = x >= 0 && x <= 6 && y >= 0 && y <= 6 && (ring || core);
+            }
+        }
+    }
+    return m;
+}
 
 // Button presses in the scripted session, by second
 static const struct {
@@ -78,7 +105,7 @@ static void session(GFXcanvas1 &canvas) {
     ui.battery_pct = 76;
 
     int counts[3] = {0, 0, 0};
-    int by_state[6][3] = {};  // [UiState][UiRefresh]
+    int by_state[7][3] = {};  // [UiState][UiRefresh]
     RiderPose last_pose = RIDER_POSE_COUNT;
     uint32_t end_s = 0;
 
@@ -129,7 +156,7 @@ static void session(GFXcanvas1 &canvas) {
     }
     printf("session: %u s, %d full refreshes, %d partial, %d skipped (nothing changed)\n", end_s + 1,
            counts[UI_REFRESH_FULL], counts[UI_REFRESH_PARTIAL], counts[UI_REFRESH_NONE]);
-    for (int st = 0; st < 6; st++) {
+    for (int st = 0; st < 7; st++) {
         int total = by_state[st][0] + by_state[st][1] + by_state[st][2];
         printf("  %-8s %3d s: %2d full, %3d partial, %3d skipped\n", STATE_NAMES[st], total,
                by_state[st][UI_REFRESH_FULL], by_state[st][UI_REFRESH_PARTIAL],
@@ -163,6 +190,9 @@ int main(int argc, char **argv) {
     save(canvas, "page_dashboard_summary");
     screen_draw_dashboard(canvas, "1234", "ft up", "5280", "ft alt", "76%", "battery");
     save(canvas, "page_elevation");
+
+    screen_draw_qr(canvas, fake_qr(), FAKE_QR_SIZE, "scan to set up");
+    save(canvas, "setup_qr");
 
     session(canvas);
     return 0;

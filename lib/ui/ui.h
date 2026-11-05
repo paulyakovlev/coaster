@@ -21,25 +21,29 @@
 //   PAUSED    page + coffee           PWR: resume      -> RIDING
 //                                     PWR long: finish -> FINISHED
 //   FINISHED  summary, no rider       PWR long: done   -> IDLE
+//   SETUP     QR code to join the device's Wi-Fi  (from IDLE: BOOT long)
+//             Any press, saving the home network, or UI_SETUP_MS -> IDLE.
+//             The caller runs the access point and sets ui->qr while here.
 //   SLEEPING  asleep in bed, "press PWR"  (from IDLE after UI_SLEEP_AFTER_MS)
 //             No battery here: the screen stays up for days and would go stale.
 //             The caller puts the board to sleep once this screen is shown.
 //
-// BOOT moves to the next page in RIDING, PAUSED and FINISHED.
+// BOOT moves to the next page in RIDING, PAUSED and FINISHED; a long press
+// there counts as a press.
 //
 // Pages:                Riding               Paused / Finished
 //   RIDER      one number + rider: speed     distance (speed would be 0)
 //   DASHBOARD  speed, distance and time      finished: average speed
 //   ELEVATION  climbing so far, with current elevation and battery in the corners
 
-enum UiState { UI_IDLE, UI_WAKING, UI_RIDING, UI_PAUSED, UI_FINISHED, UI_SLEEPING };
+enum UiState { UI_IDLE, UI_WAKING, UI_RIDING, UI_PAUSED, UI_FINISHED, UI_SLEEPING, UI_SETUP };
 
 enum UiPage { UI_PAGE_RIDER, UI_PAGE_DASHBOARD, UI_PAGE_ELEVATION, UI_PAGE_COUNT };
 
 // Units on screen. Recording and GPX are always metric.
 #define UI_IMPERIAL 1
 
-enum UiInput { UI_IN_PAGE, UI_IN_PWR, UI_IN_PWR_LONG };
+enum UiInput { UI_IN_PAGE, UI_IN_PAGE_LONG, UI_IN_PWR, UI_IN_PWR_LONG };
 
 // What the caller should do with the recording
 enum UiAction { UI_ACT_NONE, UI_ACT_START, UI_ACT_PAUSE, UI_ACT_RESUME, UI_ACT_FINISH };
@@ -50,6 +54,9 @@ enum UiRefresh { UI_REFRESH_NONE, UI_REFRESH_PARTIAL, UI_REFRESH_FULL };
 
 // Idle this long, then sleep. Only from idle: never during or after a ride.
 #define UI_SLEEP_AFTER_MS   (2 * 60 * 1000UL)
+
+// Wi-Fi setup gives up after this long; the access point drains the battery
+#define UI_SETUP_MS         (5 * 60 * 1000UL)
 
 // Fallback full refresh against ghosting. Most full refreshes happen at
 // stops and state changes instead. 30-40 looked fine on the V2 board.
@@ -116,6 +123,11 @@ struct Ui {
     uint16_t  partials;          // since the last full refresh
 
     int8_t    battery_pct;       // set by the caller; -1 = unknown
+
+    // Setup QR code, set by the caller: size x size modules, row by row,
+    // 1 = black. Shown in UI_SETUP.
+    const uint8_t *qr;
+    uint8_t   qr_size;
 };
 
 void ui_init(Ui *ui, uint32_t now_ms);
@@ -125,6 +137,9 @@ UiAction ui_input(Ui *ui, UiInput in, uint32_t now_ms);
 
 // Once per new fix while riding, after updating the stats
 void ui_ride_update(Ui *ui, const RideStats *stats, uint32_t now_ms);
+
+// The home network was saved: leave setup
+void ui_setup_done(Ui *ui, uint32_t now_ms);
 
 // Timers (waking up, going to sleep). Call often.
 void ui_tick(Ui *ui, uint32_t now_ms);

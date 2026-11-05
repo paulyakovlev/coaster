@@ -79,12 +79,13 @@ Header J1 (12 pins) is labeled RXD, TXD, SDA, SCL, GP1, GP2, GP3, GP19, GP20, 3V
 
 ### Buttons and states
 
-Two buttons: BOOT (GPIO 0) only changes pages; PWR (GPIO 18) only controls the ride, and also powers the board on. Separate jobs avoid the delay and misfires of single/double-press detection on one button. Button presses map to actions in `lib/ui`, so a one-button v1 would only need a different mapping.
+Two buttons: BOOT (GPIO 0) only changes pages (and, from idle only, a long press opens Wi-Fi setup; elsewhere a long press is a page turn); PWR (GPIO 18) only controls the ride, and also powers the board on. Separate jobs avoid the delay and misfires of single/double-press detection on one button. Button presses map to actions in `lib/ui`, so a one-button v1 would only need a different mapping.
 
 | State | Screen | BOOT | PWR press | PWR long press (1 s) |
 |---|---|---|---|---|
 | Waking (3 s, at power-on and wake) | sits up in bed, "good morning" | | | |
-| Idle | coffee, "hold PWR to ride", battery % | | | start ride |
+| Idle | coffee, "hold PWR to ride", battery % | long press (1 s): Wi-Fi setup | | start ride |
+| Wi-Fi setup (5 min, then idle) | QR code, "scan to set up" | back to idle | back to idle | back to idle |
 | Sleeping (after 2 min idle) | asleep in bed, "press PWR" (no battery: it would go stale); board in deep sleep | wake | wake | wake |
 | Riding | pages (live rider on page 1) | next page | pause | pause |
 | Paused | pages (coffee on page 1) | next page | resume | finish ride |
@@ -120,7 +121,8 @@ E-paper is not a video display. These limits shape the screen and the rider desi
 
 - When the device reconnects to home Wi-Fi, it uploads queued GPX files to Strava.
 - Queue holds multiple rides. Uploads resume after a dropped connection.
-- Setup: device broadcasts its own Wi-Fi access point, shows a QR code, and serves a captive portal for home Wi-Fi and Strava OAuth. No app, no Bluetooth.
+- Setup, step 1 (built): BOOT long press from idle. The device opens its own open Wi-Fi network, "Coaster", and shows a QR code that joins it. The phone opens the captive portal by itself; the rider types in the home network, which is saved to NVS (`wifi` namespace). No app, no Bluetooth.
+- Setup, step 2 (Strava, not built): the phone has no internet on the device's network, so Strava sign-in happens on home Wi-Fi. The device shows a second QR code with its local address; that page sends the phone to Strava's authorize page (scope `activity:write`), and Strava redirects back to the device, which swaps the code for tokens. Strava API app "Coaster" is registered (client ID 294274). Facts from Strava's docs: the token exchange needs the client secret (no PKCE, no device flow); the redirect must be inside the app's callback domain (`localhost` and `127.0.0.1` always allowed); access tokens last 6 hours; the refresh token can change on every refresh and the old one stops working at once, so the new one is saved before use; disconnecting uses `/oauth/revoke` (`/oauth/deauthorize` ends 2027-06-01).
 
 ## Out of scope for v1
 
@@ -152,6 +154,8 @@ E-paper is not a video display. These limits shape the screen and the rider desi
 - Power (`src/main.cpp`): battery voltage on GPIO 4 (x2 divider), averaged over 8 reads every minute, converted to percent by `lib/battery` (unit-tested) and logged over serial. After 2 minutes idle the UI shows the sleep screen (full refresh) and the board goes into deep sleep, using the vendor's sequence from `11_RTC_Sleep_Test`: GPIO 17 held high so it stays on with the battery alone, wake when BOOT or PWR pulls low. Waking restarts the firmware into idle. In deep sleep the USB serial port disappears; press a button before flashing. Ran on the board: sleeps after 2 minutes idle and wakes on a button press. Current while asleep not yet measured.
 - Side-view pixel rider (`lib/screen/rider.cpp`): a silly antenna blob, seven poses of 48x48 pixels, drawn at 2x on pages and 3x in scenes. All are commissioned hand-drawn art in `art/rider/` (`name_1.png`/`name_2.png` for two frames, `name.png` for one), converted to `lib/screen/rider_art.h` by `python3 scripts/rider_art.py`, which rejects any size other than 48x48 and any colors except black and transparent. Two frames: stopped (Zz drift), fast (speed lines shift), climbing (sweat drops), cruising (pedals). One frame, by design: bed (asleep, the sleep screen), waking ("!", when the board wakes), coffee (at a table: idle, and paused on the rider page). The finished summary has no rider for now. Flashed to the board in the refresh test (stopped, climbing, cruising and fast at 2x): runs, 611 ms partials as before.
 
+- Wi-Fi setup (`src/wifi_setup.cpp`, state `UI_SETUP` in `lib/ui`): BOOT long press from idle opens an open access point "Coaster" with a DNS catch-all and a one-form captive portal; the QR code comes from Espressif's `qrcode` component in the Arduino core (no new dependency) and is drawn by `screen_draw_qr` with a 4-module quiet zone (25x25 at 5 px). Any button, saving, or 5 minutes closes it and switches Wi-Fi off. The saved network isn't tried yet. The simulator draws a made-up QR code (layout only). Ran on the board: the QR code scanned, the portal saved the home network, and Wi-Fi closed back to idle. The Wi-Fi stack takes the firmware to 1.24 MB of the 2 MB app slot.
+
 ## Next steps
 
 1. Ride storage on the board: a power cut mid-ride and the repair at boot. Then a way to get a GPX off the device for checking (serial dump?) until sync exists.
@@ -161,7 +165,7 @@ E-paper is not a video display. These limits shape the screen and the rider desi
 5. Animation ghosting: run the refresh test in animation-only mode (`a`) and find how many partials the rider's two frames can alternate before ghosting shows. Set `UI_FULL_EVERY` from that, and find the upper limit on partials between full refreshes.
 6. Sound: pick a volume; listen for a pop when the amplifier switches on.
 7. Barometer over I2C for elevation.
-8. Sync and setup flow.
+8. Strava sign-in (setup step 2), then the upload queue.
 
 ## Open questions
 
@@ -171,7 +175,10 @@ E-paper is not a video display. These limits shape the screen and the rider desi
 - Ride storage: 5.9 MB holds about 16 hours. What happens when it's full: stop saving (now), or delete the oldest uploaded ride? Rides are deleted only after upload, once sync exists. Show a storage or save error on screen, not only over serial? No over-the-air updates with this partition table; revisit if OTA is wanted (two app slots of 2 MB would still leave about 3.9 MB).
 - Elevation gain uses GPS altitude until the barometer is in, and GPS altitude wanders by several meters. Strava recalculates elevation for GPX from devices without a barometer, so the on-device number may differ from Strava's. Is that acceptable for v1?
 - Stop threshold of 3 km/h: right for slow climbs and walking the bike? Check against a real ride.
-- Strava OAuth: the phone has no internet while joined to the device's AP. Do OAuth after the device joins home Wi-Fi, served at its local IP? Where does the client secret live?
+- Strava callback domain: does Strava accept `coaster.local` (or a local IP) as the app's callback domain? iPhones resolve `.local`; Android is unreliable. Fallback: a fixed local IP set on the router.
+- Strava client secret: in the firmware (a git-ignored build flag) is fine for personal use. For v1, a small server that holds the secret and receives the redirect at a real domain?
+- Wi-Fi setup network is open (no password), so the home Wi-Fi password crosses the air unencrypted while setup is open (at most 5 minutes). A random WPA2 password in the QR code would fix it at no cost to the rider. Keep it open for the proof of concept?
+- Wi-Fi setup checks nothing: a mistyped password shows up only when sync tries the network. Try joining before saving, or list nearby networks in the form?
 - Thesis says "rides you take alone"; target rider includes social group rides. Which is it?
 - Animation cost: at 1 fps on the rider page, the fallback full refresh (every 40 partials) flashes about every 40 s while riding. How many partials can alternating frames take before ghosting shows? How much battery does animation cost compared with a still rider? The rider now also travels across the page, so each frame moves its whole outline instead of a few pixels: does that ghost more, and does it need full refreshes more often than every 40 partials?
 - Sound: audible over wind and traffic from a small speaker? How much does it draw while off? The vendor's `board_power_bsp_t` (used by `lib/display/`) sets GPIO 42 as an output, probably leaving the audio rail on, so the firmware switches it off after display setup. Should there be a way to mute it?

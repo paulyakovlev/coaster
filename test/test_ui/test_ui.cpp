@@ -439,6 +439,47 @@ static void test_sleeps_after_idle_only(void) {
     TEST_ASSERT_EQUAL(UI_PAUSED, ui.state);
 }
 
+static void test_setup_from_idle_only(void) {
+    Ui ui;
+    ui_init(&ui, 0);
+    RideStats s;
+    ride_stats_init(&s);
+    ui_tick(&ui, UI_WAKING_MS);
+    ui_render(&ui, &s, canvas);
+    uint32_t t = UI_WAKING_MS;
+
+    // BOOT long from idle: setup, with a full refresh for the QR code
+    TEST_ASSERT_EQUAL(UI_ACT_NONE, ui_input(&ui, UI_IN_PAGE_LONG, t));
+    TEST_ASSERT_EQUAL(UI_SETUP, ui.state);
+    TEST_ASSERT_EQUAL(UI_REFRESH_FULL, ui_render(&ui, &s, canvas));
+    TEST_ASSERT_EQUAL(UI_REFRESH_NONE, ui_render(&ui, &s, canvas));
+
+    // Never sleeps in setup; gives up after UI_SETUP_MS
+    ui_tick(&ui, t + UI_SLEEP_AFTER_MS);
+    TEST_ASSERT_EQUAL(UI_SETUP, ui.state);
+    ui_tick(&ui, t + UI_SETUP_MS);
+    TEST_ASSERT_EQUAL(UI_IDLE, ui.state);
+
+    // Any press leaves, and a ride doesn't start from setup
+    ui_input(&ui, UI_IN_PAGE_LONG, t);
+    TEST_ASSERT_EQUAL(UI_ACT_NONE, ui_input(&ui, UI_IN_PWR_LONG, t));
+    TEST_ASSERT_EQUAL(UI_IDLE, ui.state);
+
+    // Saved: back to idle
+    ui_input(&ui, UI_IN_PAGE_LONG, t);
+    ui_setup_done(&ui, t);
+    TEST_ASSERT_EQUAL(UI_IDLE, ui.state);
+
+    // Mid-ride a long BOOT press is a page turn, not a pause
+    ui_input(&ui, UI_IN_PWR_LONG, t);
+    ui_input(&ui, UI_IN_PAGE_LONG, t);
+    TEST_ASSERT_EQUAL(UI_RIDING, ui.state);
+    TEST_ASSERT_EQUAL(UI_PAGE_DASHBOARD, ui.page);
+    ui_input(&ui, UI_IN_PWR, t);
+    ui_input(&ui, UI_IN_PAGE_LONG, t);
+    TEST_ASSERT_EQUAL(UI_PAUSED, ui.state);
+}
+
 static void test_battery_only_on_idle_screens(void) {
     Ui ui;
     ui_init(&ui, 0);
@@ -480,5 +521,6 @@ int main(int, char **) {
     RUN_TEST(test_rest_poses_hold_still);
     RUN_TEST(test_sleeps_after_idle_only);
     RUN_TEST(test_battery_only_on_idle_screens);
+    RUN_TEST(test_setup_from_idle_only);
     return UNITY_END();
 }

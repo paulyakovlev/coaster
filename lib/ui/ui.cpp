@@ -47,14 +47,23 @@ static void next_page(Ui *ui) {
 }
 
 UiAction ui_input(Ui *ui, UiInput in, uint32_t now_ms) {
+    // A slow press of BOOT still turns the page; only idle tells them apart
+    if (in == UI_IN_PAGE_LONG && ui->state != UI_IDLE) in = UI_IN_PAGE;
+
     switch (ui->state) {
     case UI_IDLE:
-        if (in == UI_IN_PWR_LONG) {
+        if (in == UI_IN_PAGE_LONG) {
+            set_state(ui, UI_SETUP, now_ms);
+        } else if (in == UI_IN_PWR_LONG) {
             set_state(ui, UI_RIDING, now_ms);
             ui->page = UI_PAGE_RIDER;
             reset_riding(ui, now_ms);
             return UI_ACT_START;
         }
+        break;
+
+    case UI_SETUP:
+        set_state(ui, UI_IDLE, now_ms);  // any press leaves
         break;
 
     case UI_WAKING:
@@ -151,7 +160,14 @@ void ui_ride_update(Ui *ui, const RideStats *stats, uint32_t now_ms) {
     }
 }
 
+void ui_setup_done(Ui *ui, uint32_t now_ms) {
+    if (ui->state == UI_SETUP) set_state(ui, UI_IDLE, now_ms);
+}
+
 void ui_tick(Ui *ui, uint32_t now_ms) {
+    if (ui->state == UI_SETUP && now_ms - ui->state_since_ms >= UI_SETUP_MS) {
+        set_state(ui, UI_IDLE, now_ms);
+    }
     if (ui->state == UI_WAKING && now_ms - ui->state_since_ms >= UI_WAKING_MS) {
         set_state(ui, UI_IDLE, now_ms);
     }
@@ -281,6 +297,7 @@ static void build_frame(const Ui *ui, const RideStats *stats, UiFrame *f) {
     f->stopped = ui->state == UI_RIDING && ui->pose == RIDER_STOPPED;
     f->battery = -1;
     if (ui->state == UI_IDLE) f->battery = ui->battery_pct;
+    if (ui->state == UI_SETUP) return;
     if (ui->state == UI_IDLE || ui->state == UI_WAKING || ui->state == UI_SLEEPING) {
         f->pose  = rest_pose(ui->state);
         f->frame = ui->frame;
@@ -325,7 +342,9 @@ UiRefresh ui_render(Ui *ui, const RideStats *stats, GFXcanvas1 &canvas) {
     char battery[5] = "";
     if (f.battery >= 0) snprintf(battery, sizeof(battery), "%d%%", f.battery);
 
-    if (f.state == UI_IDLE) {
+    if (f.state == UI_SETUP) {
+        screen_draw_qr(canvas, ui->qr, ui->qr_size, "scan to set up");
+    } else if (f.state == UI_IDLE) {
         screen_draw_scene(canvas, RIDER_COFFEE, f.frame, "hold PWR to ride", battery);
     } else if (f.state == UI_SLEEPING) {
         screen_draw_scene(canvas, RIDER_BED, f.frame, "press PWR", "");
