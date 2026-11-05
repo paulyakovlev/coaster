@@ -192,7 +192,11 @@ int main(int argc, char **argv) {
     save(canvas, "page_elevation");
 
     screen_draw_qr(canvas, fake_qr(), FAKE_QR_SIZE, "scan to set up");
-    save(canvas, "setup_qr");
+    save(canvas, "setup_wifi");
+    screen_draw_qr(canvas, nullptr, 0, "joining wifi");
+    save(canvas, "setup_joining");
+    screen_draw_qr(canvas, fake_qr(), FAKE_QR_SIZE, "scan for Strava");
+    save(canvas, "setup_strava");
 
     session(canvas);
     return 0;

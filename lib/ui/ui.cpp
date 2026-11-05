@@ -54,6 +54,7 @@ UiAction ui_input(Ui *ui, UiInput in, uint32_t now_ms) {
     case UI_IDLE:
         if (in == UI_IN_PAGE_LONG) {
             set_state(ui, UI_SETUP, now_ms);
+            ui_set_qr(ui, nullptr, 0, "one moment");  // until the caller has a screen
         } else if (in == UI_IN_PWR_LONG) {
             set_state(ui, UI_RIDING, now_ms);
             ui->page = UI_PAGE_RIDER;
@@ -158,6 +159,13 @@ void ui_ride_update(Ui *ui, const RideStats *stats, uint32_t now_ms) {
             if (ui->rider_x <= -RIDER_WIDTH) ui->rider_x = SCREEN_WIDTH - UI_RIDER_STEP;
         }
     }
+}
+
+void ui_set_qr(Ui *ui, const uint8_t *qr, uint8_t size, const char *caption) {
+    ui->qr         = qr;
+    ui->qr_size    = qr ? size : 0;
+    ui->qr_caption = caption;
+    ui->qr_version++;
 }
 
 void ui_setup_done(Ui *ui, uint32_t now_ms) {
@@ -297,7 +305,10 @@ static void build_frame(const Ui *ui, const RideStats *stats, UiFrame *f) {
     f->stopped = ui->state == UI_RIDING && ui->pose == RIDER_STOPPED;
     f->battery = -1;
     if (ui->state == UI_IDLE) f->battery = ui->battery_pct;
-    if (ui->state == UI_SETUP) return;
+    if (ui->state == UI_SETUP) {
+        f->qr = ui->qr_version;
+        return;
+    }
     if (ui->state == UI_IDLE || ui->state == UI_WAKING || ui->state == UI_SLEEPING) {
         f->pose  = rest_pose(ui->state);
         f->frame = ui->frame;
@@ -319,7 +330,7 @@ static void build_frame(const Ui *ui, const RideStats *stats, UiFrame *f) {
 
 static bool same_frame(const UiFrame *a, const UiFrame *b) {
     return a->state == b->state && a->page == b->page && a->pose == b->pose &&
-           a->frame == b->frame && a->rider_x == b->rider_x && a->stopped == b->stopped && a->battery == b->battery &&
+           a->frame == b->frame && a->rider_x == b->rider_x && a->stopped == b->stopped && a->battery == b->battery && a->qr == b->qr &&
            strcmp(a->main, b->main) == 0 &&
            strcmp(a->left, b->left) == 0 && strcmp(a->right, b->right) == 0;
 }
@@ -337,13 +348,13 @@ UiRefresh ui_render(Ui *ui, const RideStats *stats, GFXcanvas1 &canvas) {
                         (ui->shown.state == UI_PAUSED && f.state == UI_RIDING);
     bool full = !ui->has_shown || ui->partials >= UI_FULL_EVERY ||
                 (f.state != ui->shown.state && !quiet_change) ||
-                (f.stopped && !ui->shown.stopped);
+                (f.stopped && !ui->shown.stopped) || f.qr != ui->shown.qr;
 
     char battery[5] = "";
     if (f.battery >= 0) snprintf(battery, sizeof(battery), "%d%%", f.battery);
 
     if (f.state == UI_SETUP) {
-        screen_draw_qr(canvas, ui->qr, ui->qr_size, "scan to set up");
+        screen_draw_qr(canvas, ui->qr, ui->qr_size, ui->qr_caption ? ui->qr_caption : "");
     } else if (f.state == UI_IDLE) {
         screen_draw_scene(canvas, RIDER_COFFEE, f.frame, "hold PWR to ride", battery);
     } else if (f.state == UI_SLEEPING) {

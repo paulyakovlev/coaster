@@ -21,9 +21,10 @@
 //   PAUSED    page + coffee           PWR: resume      -> RIDING
 //                                     PWR long: finish -> FINISHED
 //   FINISHED  summary, no rider       PWR long: done   -> IDLE
-//   SETUP     QR code to join the device's Wi-Fi  (from IDLE: BOOT long)
-//             Any press, saving the home network, or UI_SETUP_MS -> IDLE.
-//             The caller runs the access point and sets ui->qr while here.
+//   SETUP     a QR code: home Wi-Fi, then Strava  (from IDLE: BOOT long)
+//             Any press, signing in, or UI_SETUP_MS -> IDLE.
+//             The caller runs setup and sets the screen with ui_set_qr();
+//             "one moment" until it does.
 //   SLEEPING  asleep in bed, "press PWR"  (from IDLE after UI_SLEEP_AFTER_MS)
 //             No battery here: the screen stays up for days and would go stale.
 //             The caller puts the board to sleep once this screen is shown.
@@ -95,6 +96,7 @@ struct UiFrame {
     int16_t   rider_x;  // left edge of the rider box, 0 when the page has no rider
     bool      stopped;  // riding but stopped, on any page (for the full refresh)
     int8_t    battery;  // percent on the idle and sleep screens, else -1
+    uint8_t   qr;       // setup: ui->qr_version
     char      main[UI_VALUE_MAX];
     char      left[UI_VALUE_MAX];
     char      right[UI_VALUE_MAX];
@@ -124,10 +126,11 @@ struct Ui {
 
     int8_t    battery_pct;       // set by the caller; -1 = unknown
 
-    // Setup QR code, set by the caller: size x size modules, row by row,
-    // 1 = black. Shown in UI_SETUP.
+    // Setup screen, from ui_set_qr()
     const uint8_t *qr;
     uint8_t   qr_size;
+    const char *qr_caption;
+    uint8_t   qr_version;        // changes with every ui_set_qr()
 };
 
 void ui_init(Ui *ui, uint32_t now_ms);
@@ -138,7 +141,11 @@ UiAction ui_input(Ui *ui, UiInput in, uint32_t now_ms);
 // Once per new fix while riding, after updating the stats
 void ui_ride_update(Ui *ui, const RideStats *stats, uint32_t now_ms);
 
-// The home network was saved: leave setup
+// What setup shows: a QR code (size x size modules, row by row, 1 = black;
+// nullptr for none) with a caption. The caller keeps both alive.
+void ui_set_qr(Ui *ui, const uint8_t *qr, uint8_t size, const char *caption);
+
+// Setup finished (signed in), or couldn't start: back to idle
 void ui_setup_done(Ui *ui, uint32_t now_ms);
 
 // Timers (waking up, going to sleep). Call often.

@@ -85,7 +85,7 @@ Two buttons: BOOT (GPIO 0) only changes pages (and, from idle only, a long press
 |---|---|---|---|---|
 | Waking (3 s, at power-on and wake) | sits up in bed, "good morning" | | | |
 | Idle | coffee, "hold PWR to ride", battery % | long press (1 s): Wi-Fi setup | | start ride |
-| Wi-Fi setup (5 min, then idle) | QR code, "scan to set up" | back to idle | back to idle | back to idle |
+| Setup (5 min, then idle) | QR code: "scan to set up" (Wi-Fi), then "scan for Strava" | back to idle | back to idle | back to idle |
 | Sleeping (after 2 min idle) | asleep in bed, "press PWR" (no battery: it would go stale); board in deep sleep | wake | wake | wake |
 | Riding | pages (live rider on page 1) | next page | pause | pause |
 | Paused | pages (coffee on page 1) | next page | resume | finish ride |
@@ -121,8 +121,9 @@ E-paper is not a video display. These limits shape the screen and the rider desi
 
 - When the device reconnects to home Wi-Fi, it uploads queued GPX files to Strava.
 - Queue holds multiple rides. Uploads resume after a dropped connection.
+- Sync (`src/sync.cpp`): every time the device comes back to idle (woken up, ride finished, setup closed) with finished rides waiting, a background task joins home Wi-Fi (15 s at most), refreshes the access token, and uploads each `.gpx` (`POST /api/v3/uploads`, `external_id` = file name), checking every 2 s until Strava has made the activity. Uploaded rides are renamed `.sent` (a "duplicate" answer counts as uploaded), rides Strava refuses become `.rejected`; nothing is deleted. Starting a ride or opening setup stops the sync after the current upload; the board doesn't sleep until it's done. Wi-Fi is off otherwise. The fake-ride build never syncs: Strava flagged the made-up route (a straight line north through the Alps) as suspicious.
 - Setup, step 1 (built): BOOT long press from idle. The device opens its own open Wi-Fi network, "Coaster", and shows a QR code that joins it. The phone opens the captive portal by itself; the rider types in the home network, which is saved to NVS (`wifi` namespace). No app, no Bluetooth.
-- Setup, step 2 (Strava, not built): the phone has no internet on the device's network, so Strava sign-in happens on home Wi-Fi. The device shows a second QR code with its local address; that page sends the phone to Strava's authorize page (scope `activity:write`), and Strava redirects back to the device, which swaps the code for tokens. Strava API app "Coaster" is registered (client ID 294274). Facts from Strava's docs: the token exchange needs the client secret (no PKCE, no device flow); the redirect must be inside the app's callback domain (`localhost` and `127.0.0.1` always allowed); access tokens last 6 hours; the refresh token can change on every refresh and the old one stops working at once, so the new one is saved before use; disconnecting uses `/oauth/revoke` (`/oauth/deauthorize` ends 2027-06-01).
+- Setup, step 2 (Strava, built): with a home network saved, setup joins it and goes straight here (can't join: back to step 1). The phone has no internet on the device's network, so Strava sign-in happens on home Wi-Fi. The device shows a second QR code with its local address; that page sends the phone to Strava's authorize page (scope `activity:write`), and Strava redirects back to the device, which swaps the code for tokens. The sign-in page checks a random `state` and that `activity:write` was granted. The client secret is in `src/strava_secrets.h` (git-ignored; copy `strava_secrets.example.h`). Strava API app "Coaster" is registered (client ID 294274). Facts from Strava's docs: the token exchange needs the client secret (no PKCE, no device flow); the redirect must be inside the app's callback domain (`localhost` and `127.0.0.1` always allowed); access tokens last 6 hours; the refresh token can change on every refresh and the old one stops working at once, so the new one is saved before use; disconnecting uses `/oauth/revoke` (`/oauth/deauthorize` ends 2027-06-01).
 
 ## Out of scope for v1
 
@@ -156,6 +157,8 @@ E-paper is not a video display. These limits shape the screen and the rider desi
 
 - Wi-Fi setup (`src/wifi_setup.cpp`, state `UI_SETUP` in `lib/ui`): BOOT long press from idle opens an open access point "Coaster" with a DNS catch-all and a one-form captive portal; the QR code comes from Espressif's `qrcode` component in the Arduino core (no new dependency) and is drawn by `screen_draw_qr` with a 4-module quiet zone (25x25 at 5 px). Any button, saving, or 5 minutes closes it and switches Wi-Fi off. The saved network isn't tried yet. The simulator draws a made-up QR code (layout only). Ran on the board: the QR code scanned, the portal saved the home network, and Wi-Fi closed back to idle. The Wi-Fi stack takes the firmware to 1.24 MB of the 2 MB app slot.
 
+- Strava (`lib/strava/`, unit-tested; `src/sync.cpp`): sign-in as setup step 2 and the background upload described under "Sync". HTTPS to www.strava.com is checked against the certificate bundle built into the Arduino core. Replies are read by a small key finder, not a JSON library. Uploads send `Expect: 100-continue` and wait for Strava before sending the file: without it, every upload broke off after 8 KB with no answer (cause not pinned down; the TLS client closes on a failed write, losing any reply). Ran on the board: signed in from a phone through `coaster.local`, and the fake ride uploaded and became an activity on the first try. The firmware is now 1.45 MB of the 2 MB app slot.
+
 ## Next steps
 
 1. Ride storage on the board: a power cut mid-ride and the repair at boot. Then a way to get a GPX off the device for checking (serial dump?) until sync exists.
@@ -165,7 +168,7 @@ E-paper is not a video display. These limits shape the screen and the rider desi
 5. Animation ghosting: run the refresh test in animation-only mode (`a`) and find how many partials the rider's two frames can alternate before ghosting shows. Set `UI_FULL_EVERY` from that, and find the upper limit on partials between full refreshes.
 6. Sound: pick a volume; listen for a pop when the amplifier switches on.
 7. Barometer over I2C for elevation.
-8. Strava sign-in (setup step 2), then the upload queue.
+8. Check the uploaded fake ride on Strava (ride type, time, distance); upload a real ride once the GPS is wired. Try sign-in from both an iPhone and an Android phone (`coaster.local` may not resolve on Android).
 
 ## Open questions
 
@@ -175,7 +178,9 @@ E-paper is not a video display. These limits shape the screen and the rider desi
 - Ride storage: 5.9 MB holds about 16 hours. What happens when it's full: stop saving (now), or delete the oldest uploaded ride? Rides are deleted only after upload, once sync exists. Show a storage or save error on screen, not only over serial? No over-the-air updates with this partition table; revisit if OTA is wanted (two app slots of 2 MB would still leave about 3.9 MB).
 - Elevation gain uses GPS altitude until the barometer is in, and GPS altitude wanders by several meters. Strava recalculates elevation for GPX from devices without a barometer, so the on-device number may differ from Strava's. Is that acceptable for v1?
 - Stop threshold of 3 km/h: right for slow climbs and walking the bike? Check against a real ride.
-- Strava callback domain: does Strava accept `coaster.local` (or a local IP) as the app's callback domain? iPhones resolve `.local`; Android is unreliable. Fallback: a fixed local IP set on the router.
+- Strava callback domain: `coaster.local` worked from the phone used for the first test (which kind?). Android resolves `.local` unreliably; if it fails there, fall back to a fixed local IP set on the router.
+- Uploaded rides are kept as `.sent`. Delete them when the flash fills up (oldest first), or right after upload?
+- Sync timing: rides upload when the device comes back to idle. A rider who finishes a ride away from home and lets it sleep only syncs at the next wake at home. Good enough, or also try when finishing?
 - Strava client secret: in the firmware (a git-ignored build flag) is fine for personal use. For v1, a small server that holds the secret and receives the redirect at a real domain?
 - Wi-Fi setup network is open (no password), so the home Wi-Fi password crosses the air unencrypted while setup is open (at most 5 minutes). A random WPA2 password in the QR code would fix it at no cost to the rider. Keep it open for the proof of concept?
 - Wi-Fi setup checks nothing: a mistyped password shows up only when sync tries the network. Try joining before saving, or list nearby networks in the form?

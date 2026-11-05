@@ -6,7 +6,9 @@
 // by a power cut is repaired at the next boot.
 //
 // Buttons: BOOT = next page. PWR = ride control (see lib/ui/ui.h).
-// BOOT long press from idle opens Wi-Fi setup (src/wifi_setup.cpp).
+// BOOT long press from idle opens setup: home Wi-Fi, then Strava
+// (src/wifi_setup.cpp). Back in idle, finished rides upload in the
+// background (src/sync.cpp).
 // Starting a ride plays one short sound; nothing else beeps (group rides).
 // Idle for a while: the sleep screen, then deep sleep until a button press.
 
@@ -25,6 +27,7 @@
 #include "ride_log.h"
 #include "screen.h"
 #include "sound.h"
+#include "sync.h"
 #include "ui.h"
 #include "wifi_setup.h"
 
@@ -172,6 +175,7 @@ static void sound_task(void *) {
 static void apply(UiAction action, uint32_t now) {
     switch (action) {
     case UI_ACT_START:
+        sync_cancel();  // Wi-Fi off while riding
         ride_stats_init(&stats);
         ride_log_start(&ride_log, RIDES_DIR);
         fixes_restart(true, now);
@@ -325,19 +329,38 @@ void loop() {
     UiState before = ui.state;
     ui_tick(&ui, now);
 
-    // Wi-Fi setup runs while the UI shows its QR code
+    // Setup runs while the UI shows it. Wi-Fi does one thing at a time: a
+    // sync in progress stops first.
     if (ui.state == UI_SETUP && !setup_open) {
-        ui.qr = wifi_setup_start(&ui.qr_size);
-        setup_open = ui.qr != nullptr;
-        if (!setup_open) ui_setup_done(&ui, now);
-    } else if (ui.state == UI_SETUP && wifi_setup_poll()) {
-        ui_setup_done(&ui, now);
+        sync_cancel();
+        if (!sync_running()) {
+            wifi_setup_start();
+            setup_open = true;
+        }
+    }
+    if (setup_open) {
+        const uint8_t *qr;
+        uint8_t     size;
+        const char *caption;
+        switch (wifi_setup_poll()) {
+        case SETUP_SCREEN:
+            wifi_setup_screen(&qr, &size, &caption);
+            ui_set_qr(&ui, qr, size, caption);
+            break;
+        case SETUP_DONE: ui_setup_done(&ui, now); break;
+        case SETUP_NONE: break;
+        }
     }
     if (ui.state != UI_SETUP && setup_open) {
         wifi_setup_stop();
         setup_open = false;
     }
     if (ui.state != before) Serial.printf("# %s\n", STATE_NAMES[ui.state]);
+
+    // Back in idle (woken up, ride finished, setup closed): upload finished rides
+    static UiState last = UI_WAKING;
+    if (ui.state == UI_IDLE && last != UI_IDLE) sync_start();
+    last = ui.state;
 
     UiRefresh r = ui_render(&ui, &stats, canvas);
     if (r != UI_REFRESH_NONE) {
@@ -350,7 +373,8 @@ void loop() {
         Serial.printf("# %s refresh %lu ms\n", r == UI_REFRESH_FULL ? "full" : "partial",
                       (unsigned long)(millis() - t0));
     }
-    if (ui.shown.state == UI_SLEEPING) sleep_now();  // sleep screen is on the panel
+    // Sleep screen is on the panel; an upload in progress finishes first
+    if (ui.shown.state == UI_SLEEPING && !sync_running()) sleep_now();
 
     delay(10);
 }

@@ -448,11 +448,15 @@ static void test_setup_from_idle_only(void) {
     ui_render(&ui, &s, canvas);
     uint32_t t = UI_WAKING_MS;
 
-    // BOOT long from idle: setup, with a full refresh for the QR code
+    // BOOT long from idle: setup, with a full refresh for each QR code
     TEST_ASSERT_EQUAL(UI_ACT_NONE, ui_input(&ui, UI_IN_PAGE_LONG, t));
     TEST_ASSERT_EQUAL(UI_SETUP, ui.state);
+    static const uint8_t qr[4] = {1, 0, 0, 1};
+    ui_set_qr(&ui, nullptr, 0, "joining wifi");
     TEST_ASSERT_EQUAL(UI_REFRESH_FULL, ui_render(&ui, &s, canvas));
     TEST_ASSERT_EQUAL(UI_REFRESH_NONE, ui_render(&ui, &s, canvas));
+    ui_set_qr(&ui, qr, 2, "scan for Strava");
+    TEST_ASSERT_EQUAL(UI_REFRESH_FULL, ui_render(&ui, &s, canvas));
 
     // Never sleeps in setup; gives up after UI_SETUP_MS
     ui_tick(&ui, t + UI_SLEEP_AFTER_MS);
