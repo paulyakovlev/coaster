@@ -75,18 +75,21 @@ static void ride_at(RideStats *s, float kmh, double dist_m, float ele, uint32_t 
 static void test_ui_full_cycle(void) {
     Ui ui;
     ui_init(&ui, 0);
+
+    // The board wakes up, then idles. Buttons do nothing while it wakes.
+    TEST_ASSERT_EQUAL(UI_WAKING, ui.state);
+    TEST_ASSERT_EQUAL(UI_ACT_NONE, ui_input(&ui, UI_IN_PWR_LONG, 0));
+    ui_tick(&ui, UI_WAKING_MS - 1);
+    TEST_ASSERT_EQUAL(UI_WAKING, ui.state);
+    ui_tick(&ui, UI_WAKING_MS);
     TEST_ASSERT_EQUAL(UI_IDLE, ui.state);
 
     // A short PWR press or BOOT does nothing while idle
-    TEST_ASSERT_EQUAL(UI_ACT_NONE, ui_input(&ui, UI_IN_PWR, 0));
-    TEST_ASSERT_EQUAL(UI_ACT_NONE, ui_input(&ui, UI_IN_PAGE, 0));
+    TEST_ASSERT_EQUAL(UI_ACT_NONE, ui_input(&ui, UI_IN_PWR, 4000));
+    TEST_ASSERT_EQUAL(UI_ACT_NONE, ui_input(&ui, UI_IN_PAGE, 4000));
     TEST_ASSERT_EQUAL(UI_IDLE, ui.state);
 
-    TEST_ASSERT_EQUAL(UI_ACT_START, ui_input(&ui, UI_IN_PWR_LONG, 1000));
-    TEST_ASSERT_EQUAL(UI_WAKING, ui.state);
-    ui_tick(&ui, 1000 + UI_WAKING_MS - 1);
-    TEST_ASSERT_EQUAL(UI_WAKING, ui.state);
-    ui_tick(&ui, 1000 + UI_WAKING_MS);
+    TEST_ASSERT_EQUAL(UI_ACT_START, ui_input(&ui, UI_IN_PWR_LONG, 4000));
     TEST_ASSERT_EQUAL(UI_RIDING, ui.state);
 
     // BOOT cycles the pages: rider, dashboard, elevation, rider
@@ -117,8 +120,8 @@ static void test_ui_full_cycle(void) {
 static void test_ui_finish_needs_pause_first(void) {
     Ui ui;
     ui_init(&ui, 0);
-    ui_input(&ui, UI_IN_PWR_LONG, 0);
     ui_tick(&ui, UI_WAKING_MS);
+    ui_input(&ui, UI_IN_PWR_LONG, UI_WAKING_MS);
     // Long press while riding pauses; it never finishes the ride directly
     TEST_ASSERT_EQUAL(UI_ACT_PAUSE, ui_input(&ui, UI_IN_PWR_LONG, 5000));
     TEST_ASSERT_EQUAL(UI_PAUSED, ui.state);
@@ -155,6 +158,11 @@ static void test_values_imperial(void) {
     TEST_ASSERT_EQUAL_STRING("457", v);
     TEST_ASSERT_EQUAL_STRING("ft up", unit);
 
+    s.ele_m = -3.2f;  // below sea level: 10.5 ft
+    ui_format(UI_VAL_ELEVATION, &s, v, sizeof(v), &unit);
+    TEST_ASSERT_EQUAL_STRING("-10", v);
+    TEST_ASSERT_EQUAL_STRING("ft alt", unit);
+
     // 10 mi in 40 min of moving time: 15 mph
     ride_at(&s, 0, 16093.44, 0, 2400);
     ui_format(UI_VAL_AVG_SPEED, &s, v, sizeof(v), &unit);
@@ -166,12 +174,14 @@ static void test_values_imperial(void) {
 static void test_page_contents(void) {
     Ui ui;
     ui_init(&ui, 0);
+    ui.battery_pct = 76;
     RideStats s;
     ride_at(&s, 0, 16093.44, 0, 2400);
     s.speed_mps = 8.0f;
+    s.ele_m     = 100.0f;  // 328 ft
 
-    ui_input(&ui, UI_IN_PWR_LONG, 0);
     ui_tick(&ui, UI_WAKING_MS);
+    ui_input(&ui, UI_IN_PWR_LONG, UI_WAKING_MS);
     ui_render(&ui, &s, canvas);
     TEST_ASSERT_EQUAL_STRING("18", ui.shown.main);  // rider page: speed
     TEST_ASSERT_EQUAL(RIDER_CRUISING, ui.shown.pose);
@@ -185,7 +195,9 @@ static void test_page_contents(void) {
 
     ui_input(&ui, UI_IN_PAGE, 0);
     ui_render(&ui, &s, canvas);
-    TEST_ASSERT_EQUAL_STRING("0", ui.shown.main);   // elevation
+    TEST_ASSERT_EQUAL_STRING("0", ui.shown.main);   // elevation: climbed, now, battery
+    TEST_ASSERT_EQUAL_STRING("328", ui.shown.left);
+    TEST_ASSERT_EQUAL_STRING("76%", ui.shown.right);
     TEST_ASSERT_EQUAL(RIDER_POSE_COUNT, ui.shown.pose);
 
     // Paused: rider page shows distance with the coffee
@@ -195,11 +207,11 @@ static void test_page_contents(void) {
     TEST_ASSERT_EQUAL_STRING("10.0", ui.shown.main);
     TEST_ASSERT_EQUAL(RIDER_COFFEE, ui.shown.pose);
 
-    // Finished: couch and distance, then the dashboard with the average
+    // Finished: distance with no rider, then the dashboard with the average
     ui_input(&ui, UI_IN_PWR_LONG, 0);
     ui_render(&ui, &s, canvas);
     TEST_ASSERT_EQUAL_STRING("10.0", ui.shown.main);
-    TEST_ASSERT_EQUAL(RIDER_COUCH, ui.shown.pose);
+    TEST_ASSERT_EQUAL(RIDER_POSE_COUNT, ui.shown.pose);
     ui_input(&ui, UI_IN_PAGE, 0);
     ui_render(&ui, &s, canvas);
     TEST_ASSERT_EQUAL_STRING("15", ui.shown.main);
@@ -210,8 +222,8 @@ static void test_page_contents(void) {
 static Ui riding_ui(void) {
     Ui ui;
     ui_init(&ui, 0);
-    ui_input(&ui, UI_IN_PWR_LONG, 0);
     ui_tick(&ui, UI_WAKING_MS);
+    ui_input(&ui, UI_IN_PWR_LONG, UI_WAKING_MS);
     return ui;
 }
 
@@ -263,14 +275,14 @@ static void test_refresh_policy(void) {
     RideStats s;
     ride_at(&s, 20, 1000, 100, 60);
 
-    TEST_ASSERT_EQUAL(UI_REFRESH_FULL, ui_render(&ui, &s, canvas));  // first frame
+    TEST_ASSERT_EQUAL(UI_REFRESH_FULL, ui_render(&ui, &s, canvas));  // first frame: waking
     TEST_ASSERT_EQUAL(UI_REFRESH_NONE, ui_render(&ui, &s, canvas));  // nothing changed
-
-    ui_input(&ui, UI_IN_PWR_LONG, 0);
-    TEST_ASSERT_EQUAL(UI_REFRESH_FULL, ui_render(&ui, &s, canvas));  // waking up
     ui_tick(&ui, UI_WAKING_MS);
+    TEST_ASSERT_EQUAL(UI_REFRESH_PARTIAL, ui_render(&ui, &s, canvas));  // idle, just after a full
+
+    ui_input(&ui, UI_IN_PWR_LONG, UI_WAKING_MS);
     s.speed_mps = 8.0f;  // 17.9 mph, clear of a rounding boundary
-    TEST_ASSERT_EQUAL(UI_REFRESH_PARTIAL, ui_render(&ui, &s, canvas));  // first page
+    TEST_ASSERT_EQUAL(UI_REFRESH_FULL, ui_render(&ui, &s, canvas));  // the ride starts
 
     // Same rounded speed: skip. New speed: partial.
     s.speed_mps += 0.05f;
@@ -361,30 +373,66 @@ static void test_no_animation_off_the_rider_page(void) {
     }
 }
 
-static void test_rest_animation_and_timeout(void) {
+static void test_rest_poses_hold_still(void) {
     Ui ui;
     ui_init(&ui, 0);
     RideStats s;
     ride_stats_init(&s);
+    ui_tick(&ui, UI_WAKING_MS);
+    ui_render(&ui, &s, canvas);
+
+    // Coffee while idle: a still, so nothing more to refresh
+    for (uint32_t t = UI_WAKING_MS; t <= 60000; t += 500) {
+        ui_tick(&ui, t);
+        TEST_ASSERT_EQUAL(UI_REFRESH_NONE, ui_render(&ui, &s, canvas));
+    }
+}
+
+static void test_sleeps_after_idle_only(void) {
+    Ui ui;
+    ui_init(&ui, 0);
+    RideStats s;
+    ride_stats_init(&s);
+    ui_tick(&ui, UI_WAKING_MS);
+    ui_render(&ui, &s, canvas);
+
+    ui_tick(&ui, UI_WAKING_MS + UI_SLEEP_AFTER_MS - 1);
+    TEST_ASSERT_EQUAL(UI_IDLE, ui.state);
+    ui_tick(&ui, UI_WAKING_MS + UI_SLEEP_AFTER_MS);
+    TEST_ASSERT_EQUAL(UI_SLEEPING, ui.state);
+    // The sleep screen stays up for a long time: clear ghosting first
     TEST_ASSERT_EQUAL(UI_REFRESH_FULL, ui_render(&ui, &s, canvas));
 
-    // Asleep in bed: a new frame every 2 s
-    ui_tick(&ui, 1999);
-    TEST_ASSERT_EQUAL(UI_REFRESH_NONE, ui_render(&ui, &s, canvas));
-    ui_tick(&ui, 2000);
-    TEST_ASSERT_EQUAL(UI_REFRESH_PARTIAL, ui_render(&ui, &s, canvas));
-    ui_tick(&ui, 4000);
+    // Never mid-ride: paused for longer than the timeout stays paused
+    ui_init(&ui, 0);
+    ui_tick(&ui, UI_WAKING_MS);
+    ui_input(&ui, UI_IN_PWR_LONG, UI_WAKING_MS);
+    ui_input(&ui, UI_IN_PWR, UI_WAKING_MS);
+    ui_tick(&ui, UI_WAKING_MS + UI_SLEEP_AFTER_MS * 2);
+    TEST_ASSERT_EQUAL(UI_PAUSED, ui.state);
+}
+
+static void test_battery_only_on_idle_screens(void) {
+    Ui ui;
+    ui_init(&ui, 0);
+    RideStats s;
+    ride_stats_init(&s);
+    ui.battery_pct = 80;
+    ui_tick(&ui, UI_WAKING_MS);
+    ui_render(&ui, &s, canvas);
+    TEST_ASSERT_EQUAL(80, ui.shown.battery);
+
+    // A new reading redraws the idle screen
+    ui.battery_pct = 79;
     TEST_ASSERT_EQUAL(UI_REFRESH_PARTIAL, ui_render(&ui, &s, canvas));
 
-    // After the timeout he holds still on frame 0 and the screen stops
-    // refreshing
-    int refreshes = 0;
-    for (uint32_t t = 4000; t <= UI_ANIM_TIMEOUT_MS + 60000; t += 500) {
-        ui_tick(&ui, t);
-        if (ui_render(&ui, &s, canvas) != UI_REFRESH_NONE && t > UI_ANIM_TIMEOUT_MS) refreshes++;
-    }
-    TEST_ASSERT_EQUAL(0, ui.frame);
-    TEST_ASSERT_TRUE(refreshes <= 1);  // at most the step back to frame 0
+    // While riding it isn't shown, so a new reading costs no refresh
+    ui_tick(&ui, UI_WAKING_MS);
+    ui_input(&ui, UI_IN_PWR_LONG, UI_WAKING_MS);
+    ui_render(&ui, &s, canvas);
+    TEST_ASSERT_EQUAL(-1, ui.shown.battery);
+    ui.battery_pct = 78;
+    TEST_ASSERT_EQUAL(UI_REFRESH_NONE, ui_render(&ui, &s, canvas));
 }
 
 int main(int, char **) {
@@ -401,6 +449,8 @@ int main(int, char **) {
     RUN_TEST(test_refresh_policy);
     RUN_TEST(test_riding_animation_steps_with_fixes);
     RUN_TEST(test_no_animation_off_the_rider_page);
-    RUN_TEST(test_rest_animation_and_timeout);
+    RUN_TEST(test_rest_poses_hold_still);
+    RUN_TEST(test_sleeps_after_idle_only);
+    RUN_TEST(test_battery_only_on_idle_screens);
     return UNITY_END();
 }

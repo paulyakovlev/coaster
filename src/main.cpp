@@ -5,10 +5,14 @@
 //
 // Buttons: BOOT = next page. PWR = ride control (see lib/ui/ui.h).
 // Starting a ride plays one short sound; nothing else beeps (group rides).
+// Idle for a while: the sleep screen, then deep sleep until a button press.
 
 #include <Arduino.h>
 #include <Adafruit_GFX.h>
 #include <Wire.h>
+#include "driver/rtc_io.h"
+#include "esp_sleep.h"
+#include "battery.h"
 #include "button.h"
 #include "display.h"
 #include "fake_ride.h"
@@ -27,6 +31,14 @@
 #define I2C_SDA_PIN     47
 #define I2C_SCL_PIN     48
 
+// Battery voltage: ADC1 channel 3 (GPIO 4 on the ESP32-S3) behind a 1:2
+// divider. Source: vendor/.../Arduino/01_ADC_Test/adc_bsp.cpp
+#define VBAT_ADC_PIN    4
+// Battery power hold: high keeps the board on when running from the battery.
+// Source: vendor/.../Arduino/*/user_config.h (VBAT_PWR_PIN)
+#define VBAT_HOLD_PIN   17
+#define BATTERY_EVERY_MS 60000
+
 // Codec DAC volume: 0xBF = 0 dB, 0.5 dB per step, 0xFF = +32 dB
 #define SOUND_VOLUME    0xBF
 
@@ -44,8 +56,10 @@ static bool          recording = false;
 static uint32_t      next_fix_ms;
 static QueueHandle_t inputs;
 static TaskHandle_t  sound_task_handle;
+static uint32_t      battery_read_ms;
 
-static const char *const STATE_NAMES[] = {"idle", "waking", "riding", "paused", "finished"};
+static const char *const STATE_NAMES[] = {"idle", "waking", "riding", "paused", "finished",
+                                          "sleeping"};
 
 // Screen refreshes block for 0.6-2 s, so buttons are read in their own task
 // and queued; no press is lost during a refresh.
@@ -73,7 +87,7 @@ static void button_task(void *) {
 }
 
 // The start sound plays in its own task, so it doesn't hold up the screen
-// refresh to the waking rider. The codec and amplifier are powered only while it plays.
+// refresh to the first ride page. The codec and amplifier are powered only while it plays.
 static void sound_task(void *) {
     for (;;) {
         ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
@@ -115,6 +129,30 @@ static void apply(UiAction action, uint32_t now) {
     }
 }
 
+// Battery voltage, averaged over a few reads against ADC noise
+static void update_battery() {
+    uint32_t sum = 0;
+    for (int i = 0; i < 8; i++) sum += analogReadMilliVolts(VBAT_ADC_PIN);
+    uint16_t mv = sum / 8 * 2;  // undo the 1:2 divider
+    ui.battery_pct = battery_percent(mv);
+    Serial.printf("# battery %u mV %d%%\n", mv, ui.battery_pct);
+}
+
+// Deep sleep, leaving the sleep screen on the panel. Same sequence as the
+// vendor's 11_RTC_Sleep_Test (EnableDeepLowPowerMode): hold the battery power
+// pin high through sleep, wake when BOOT or PWR pulls low. Waking restarts
+// the firmware from setup().
+static void sleep_now() {
+    Serial.println("# deep sleep");
+    Serial.flush();
+    esp_sleep_pd_config(ESP_PD_DOMAIN_MAX, ESP_PD_OPTION_AUTO);
+    esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL);
+    esp_sleep_enable_ext1_wakeup_io((1ULL << BOOT_BUTTON_PIN) | (1ULL << PWR_BUTTON_PIN),
+                                    ESP_EXT1_WAKEUP_ANY_LOW);
+    rtc_gpio_hold_en((gpio_num_t)VBAT_HOLD_PIN);
+    esp_deep_sleep_start();
+}
+
 void setup() {
     Serial.begin(115200);
     pinMode(BOOT_BUTTON_PIN, INPUT_PULLUP);
@@ -123,8 +161,11 @@ void setup() {
 
     ride_stats_init(&stats);
     ui_init(&ui, millis());
+    update_battery();
+    battery_read_ms = millis();
     ui_render(&ui, &stats, canvas);
     display_begin(canvas);  // full refresh with the idle screen
+    gpio_hold_dis((gpio_num_t)VBAT_HOLD_PIN);  // held through sleep; display_begin set it high
     sound_end();            // display power setup leaves the audio rail on
     sound_set_volume(SOUND_VOLUME);
 
@@ -153,6 +194,11 @@ void loop() {
         ui_ride_update(&ui, &stats, now);
     }
 
+    if (now - battery_read_ms >= BATTERY_EVERY_MS) {
+        battery_read_ms = now;
+        update_battery();
+    }
+
     UiState before = ui.state;
     ui_tick(&ui, now);
     if (ui.state != before) Serial.printf("# %s\n", STATE_NAMES[ui.state]);
@@ -168,6 +214,7 @@ void loop() {
         Serial.printf("# %s refresh %lu ms\n", r == UI_REFRESH_FULL ? "full" : "partial",
                       (unsigned long)(millis() - t0));
     }
+    if (ui.shown.state == UI_SLEEPING) sleep_now();  // sleep screen is on the panel
 
     delay(10);
 }

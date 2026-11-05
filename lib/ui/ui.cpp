@@ -4,24 +4,21 @@
 #include <stdio.h>
 #include <string.h>
 
-// Riding poses: GPS fixes per animation frame. Rest poses: ms per frame.
-// Cruising and fast pedal at 1 fps (the panel's limit); climbing is a slow
-// grind; dozing and resting are slower still.
-// Both indexed by RiderPose: stopped, fast, climbing, cruising, bed, waking,
-// coffee, couch. 0 = not used for that pose.
-static const uint8_t ANIM_FIXES[RIDER_POSE_COUNT] = {2, 1, 2, 1, 0, 0, 0, 0};
-static const uint16_t ANIM_MS[RIDER_POSE_COUNT]   = {0, 0, 0, 0, 2000, 1500, 2000, 3000};
+// Riding poses: GPS fixes per animation frame. Cruising and fast pedal at
+// 1 fps (the panel's limit); climbing is a slow grind; dozing slower still.
+// Indexed by RiderPose: stopped, fast, climbing, cruising, then the rest
+// poses (bed, waking, coffee), which have one frame and don't animate.
+static const uint8_t ANIM_FIXES[RIDER_POSE_COUNT] = {2, 1, 2, 1, 0, 0, 0};
 
-static void restart_animation(Ui *ui, uint32_t now_ms) {
+static void restart_animation(Ui *ui) {
     ui->frame          = 0;
-    ui->frame_since_ms = now_ms;
     ui->fixes_on_frame = 0;
 }
 
 static void set_state(Ui *ui, UiState state, uint32_t now_ms) {
     ui->state          = state;
     ui->state_since_ms = now_ms;
-    restart_animation(ui, now_ms);
+    restart_animation(ui);
 }
 
 // Riding starts fresh: plain cruising, no grade history
@@ -35,8 +32,9 @@ static void reset_riding(Ui *ui, uint32_t now_ms) {
 
 void ui_init(Ui *ui, uint32_t now_ms) {
     memset(ui, 0, sizeof(*ui));
-    set_state(ui, UI_IDLE, now_ms);
+    set_state(ui, UI_WAKING, now_ms);
     reset_riding(ui, now_ms);
+    ui->battery_pct = -1;
 }
 
 static void next_page(Ui *ui) {
@@ -47,7 +45,7 @@ UiAction ui_input(Ui *ui, UiInput in, uint32_t now_ms) {
     switch (ui->state) {
     case UI_IDLE:
         if (in == UI_IN_PWR_LONG) {
-            set_state(ui, UI_WAKING, now_ms);
+            set_state(ui, UI_RIDING, now_ms);
             ui->page = UI_PAGE_RIDER;
             reset_riding(ui, now_ms);
             return UI_ACT_START;
@@ -55,6 +53,7 @@ UiAction ui_input(Ui *ui, UiInput in, uint32_t now_ms) {
         break;
 
     case UI_WAKING:
+    case UI_SLEEPING:
         break;
 
     case UI_RIDING:
@@ -76,7 +75,7 @@ UiAction ui_input(Ui *ui, UiInput in, uint32_t now_ms) {
             return UI_ACT_RESUME;
         } else {
             set_state(ui, UI_FINISHED, now_ms);
-            ui->page = UI_PAGE_RIDER;  // couch and total distance
+            ui->page = UI_PAGE_RIDER;  // total distance
             return UI_ACT_FINISH;
         }
         break;
@@ -106,7 +105,7 @@ static float grade(const Ui *ui) {
 }
 
 void ui_ride_update(Ui *ui, const RideStats *stats, uint32_t now_ms) {
-    if (ui->state != UI_RIDING && ui->state != UI_WAKING) return;
+    if (ui->state != UI_RIDING) return;
 
     ui->hist_dist[ui->hist_head] = (float)stats->distance_m;
     ui->hist_ele[ui->hist_head]  = stats->ele_m;
@@ -131,31 +130,22 @@ void ui_ride_update(Ui *ui, const RideStats *stats, uint32_t now_ms) {
     uint32_t hold = ui->candidate == RIDER_STOPPED ? UI_STOPPED_HOLD_MS : UI_POSE_HOLD_MS;
     if (ui->candidate != ui->pose && now_ms - ui->candidate_since_ms >= hold) {
         ui->pose = ui->candidate;
-        restart_animation(ui, now_ms);
+        restart_animation(ui);
         return;
     }
 
-    if (ui->state == UI_RIDING && ++ui->fixes_on_frame >= ANIM_FIXES[ui->pose]) {
+    if (++ui->fixes_on_frame >= ANIM_FIXES[ui->pose]) {
         ui->frame          = (ui->frame + 1) % RIDER_FRAMES;
         ui->fixes_on_frame = 0;
     }
 }
 
-static RiderPose rest_pose(UiState state);
-
 void ui_tick(Ui *ui, uint32_t now_ms) {
     if (ui->state == UI_WAKING && now_ms - ui->state_since_ms >= UI_WAKING_MS) {
-        set_state(ui, UI_RIDING, now_ms);
+        set_state(ui, UI_IDLE, now_ms);
     }
-    if (ui->state == UI_RIDING) return;  // riding animation steps with the fixes
-
-    if (now_ms - ui->state_since_ms >= UI_ANIM_TIMEOUT_MS) {
-        ui->frame = 0;  // rest long enough: hold still, stop refreshing
-        return;
-    }
-    if (now_ms - ui->frame_since_ms >= ANIM_MS[rest_pose(ui->state)]) {
-        ui->frame          = (ui->frame + 1) % RIDER_FRAMES;
-        ui->frame_since_ms = now_ms;
+    if (ui->state == UI_IDLE && now_ms - ui->state_since_ms >= UI_SLEEP_AFTER_MS) {
+        set_state(ui, UI_SLEEPING, now_ms);
     }
 }
 
@@ -166,6 +156,7 @@ void ui_tick(Ui *ui, uint32_t now_ms) {
 #define DISTANCE_UNIT   "mi"
 #define CLIMB_FACTOR    3.28084f    // m -> ft
 #define CLIMB_UNIT      "ft up"
+#define ELEVATION_UNIT  "ft alt"
 #else
 #define SPEED_FACTOR    3.6f
 #define SPEED_UNIT      "km/h"
@@ -173,6 +164,7 @@ void ui_tick(Ui *ui, uint32_t now_ms) {
 #define DISTANCE_UNIT   "km"
 #define CLIMB_FACTOR    1.0f
 #define CLIMB_UNIT      "m up"
+#define ELEVATION_UNIT  "m alt"
 #endif
 
 void ui_format(UiValue v, const RideStats *stats, char *buf, size_t size, const char **unit) {
@@ -207,11 +199,18 @@ void ui_format(UiValue v, const RideStats *stats, char *buf, size_t size, const 
         snprintf(buf, size, "%ld", lroundf(stats->ele_gain_m * CLIMB_FACTOR));
         *unit = CLIMB_UNIT;
         break;
+
+    case UI_VAL_ELEVATION:
+        snprintf(buf, size, "%ld", lroundf(stats->ele_m * CLIMB_FACTOR));
+        *unit = ELEVATION_UNIT;
+        break;
     }
 }
 
-// Which values a page shows in a state. Unused slots are NO_VALUE.
-#define NO_VALUE ((UiValue)-1)
+// Which values a page shows in a state. Unused slots are NO_VALUE. The
+// battery isn't a ride value, so it gets its own marker.
+#define NO_VALUE      ((UiValue)-1)
+#define BATTERY_VALUE ((UiValue)-2)
 
 static void page_values(UiPage page, UiState state, UiValue *main, UiValue *left, UiValue *right) {
     *left = *right = NO_VALUE;
@@ -226,12 +225,24 @@ static void page_values(UiPage page, UiState state, UiValue *main, UiValue *left
         break;
     case UI_PAGE_ELEVATION:
     default:
-        *main = UI_VAL_CLIMB;
+        *main  = UI_VAL_CLIMB;
+        *left  = UI_VAL_ELEVATION;
+        *right = BATTERY_VALUE;
         break;
     }
 }
 
-static void format_slot(UiValue v, const RideStats *stats, char *buf, const char **unit) {
+static void format_slot(const Ui *ui, UiValue v, const RideStats *stats, char *buf,
+                        const char **unit) {
+    if (v == BATTERY_VALUE) {
+        if (ui->battery_pct < 0) {
+            snprintf(buf, UI_VALUE_MAX, "--");
+        } else {
+            snprintf(buf, UI_VALUE_MAX, "%d%%", ui->battery_pct);
+        }
+        *unit = "battery";
+        return;
+    }
     if (v == NO_VALUE) {
         buf[0] = '\0';
         *unit  = "";
@@ -240,12 +251,14 @@ static void format_slot(UiValue v, const RideStats *stats, char *buf, const char
     ui_format(v, stats, buf, UI_VALUE_MAX, unit);
 }
 
+// Rider page outside riding. Finished has no rider, just the distance.
 static RiderPose rest_pose(UiState state) {
     switch (state) {
-    case UI_IDLE:   return RIDER_BED;
-    case UI_WAKING: return RIDER_WAKING;
-    case UI_PAUSED: return RIDER_COFFEE;
-    default:        return RIDER_COUCH;
+    case UI_SLEEPING: return RIDER_BED;
+    case UI_WAKING:   return RIDER_WAKING;
+    case UI_IDLE:
+    case UI_PAUSED:   return RIDER_COFFEE;
+    default:          return RIDER_POSE_COUNT;
     }
 }
 
@@ -255,7 +268,9 @@ static void build_frame(const Ui *ui, const RideStats *stats, UiFrame *f) {
     f->page    = ui->page;
     f->pose    = RIDER_POSE_COUNT;
     f->stopped = ui->state == UI_RIDING && ui->pose == RIDER_STOPPED;
-    if (ui->state == UI_IDLE || ui->state == UI_WAKING) {
+    f->battery = -1;
+    if (ui->state == UI_IDLE) f->battery = ui->battery_pct;
+    if (ui->state == UI_IDLE || ui->state == UI_WAKING || ui->state == UI_SLEEPING) {
         f->pose  = rest_pose(ui->state);
         f->frame = ui->frame;
         return;
@@ -268,14 +283,15 @@ static void build_frame(const Ui *ui, const RideStats *stats, UiFrame *f) {
     UiValue main, left, right;
     const char *unit;
     page_values(ui->page, ui->state, &main, &left, &right);
-    format_slot(main, stats, f->main, &unit);
-    format_slot(left, stats, f->left, &unit);
-    format_slot(right, stats, f->right, &unit);
+    format_slot(ui, main, stats, f->main, &unit);
+    format_slot(ui, left, stats, f->left, &unit);
+    format_slot(ui, right, stats, f->right, &unit);
 }
 
 static bool same_frame(const UiFrame *a, const UiFrame *b) {
     return a->state == b->state && a->page == b->page && a->pose == b->pose &&
-           a->frame == b->frame && a->stopped == b->stopped && strcmp(a->main, b->main) == 0 &&
+           a->frame == b->frame && a->stopped == b->stopped && a->battery == b->battery &&
+           strcmp(a->main, b->main) == 0 &&
            strcmp(a->left, b->left) == 0 && strcmp(a->right, b->right) == 0;
 }
 
@@ -284,26 +300,34 @@ UiRefresh ui_render(Ui *ui, const RideStats *stats, GFXcanvas1 &canvas) {
     build_frame(ui, stats, &f);
     if (ui->has_shown && same_frame(&f, &ui->shown)) return UI_REFRESH_NONE;
 
-    // Full refreshes (the flash) go where they're expected anyway: entering a
-    // rest state, waking up, and stopping mid-ride (the rider dozes off).
-    // Plus a fallback every UI_FULL_EVERY partials.
+    // Full refreshes (the flash) go where they're expected anyway: state
+    // changes and stopping mid-ride (the rider dozes off). Not on resuming a
+    // ride, or waking -> idle, right after the full refresh at boot. Plus a
+    // fallback every UI_FULL_EVERY partials.
+    bool quiet_change = ui->shown.state == UI_WAKING ||
+                        (ui->shown.state == UI_PAUSED && f.state == UI_RIDING);
     bool full = !ui->has_shown || ui->partials >= UI_FULL_EVERY ||
-                (f.state != ui->shown.state && f.state != UI_RIDING) ||
+                (f.state != ui->shown.state && !quiet_change) ||
                 (f.stopped && !ui->shown.stopped);
 
+    char battery[5] = "";
+    if (f.battery >= 0) snprintf(battery, sizeof(battery), "%d%%", f.battery);
+
     if (f.state == UI_IDLE) {
-        screen_draw_scene(canvas, RIDER_BED, f.frame, "hold PWR to ride");
+        screen_draw_scene(canvas, RIDER_COFFEE, f.frame, "hold PWR to ride", battery);
+    } else if (f.state == UI_SLEEPING) {
+        screen_draw_scene(canvas, RIDER_BED, f.frame, "press PWR", "");
     } else if (f.state == UI_WAKING) {
-        screen_draw_scene(canvas, RIDER_WAKING, f.frame, "let's ride!");
+        screen_draw_scene(canvas, RIDER_WAKING, f.frame, "good morning", "");
     } else {
         UiValue main, left, right;
         const char *main_unit, *left_unit, *right_unit;
         page_values(f.page, f.state, &main, &left, &right);
         char m[UI_VALUE_MAX], l[UI_VALUE_MAX], r[UI_VALUE_MAX];
-        format_slot(main, stats, m, &main_unit);
-        format_slot(left, stats, l, &left_unit);
-        format_slot(right, stats, r, &right_unit);
-        if (f.page == UI_PAGE_DASHBOARD) {
+        format_slot(ui, main, stats, m, &main_unit);
+        format_slot(ui, left, stats, l, &left_unit);
+        format_slot(ui, right, stats, r, &right_unit);
+        if (left != NO_VALUE) {  // corner numbers: dashboard and elevation
             screen_draw_dashboard(canvas, m, main_unit, l, left_unit, r, right_unit);
         } else {
             bool rider = f.pose != RIDER_POSE_COUNT;

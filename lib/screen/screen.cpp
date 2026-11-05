@@ -120,7 +120,8 @@ void screen_draw_dashboard(GFXcanvas1 &canvas, const char *main, const char *mai
     print_centered(canvas, main_unit, 160);
 }
 
-void screen_draw_scene(GFXcanvas1 &canvas, RiderPose pose, uint8_t frame, const char *caption) {
+void screen_draw_scene(GFXcanvas1 &canvas, RiderPose pose, uint8_t frame, const char *caption,
+                       const char *corner) {
     canvas.fillScreen(SCREEN_WHITE);
     const int16_t scale = 3;
     screen_draw_rider_scaled(canvas, (SCREEN_WIDTH - 48 * scale) / 2, 8, pose, frame, scale);
@@ -129,4 +130,9 @@ void screen_draw_scene(GFXcanvas1 &canvas, RiderPose pose, uint8_t frame, const 
     canvas.setTextWrap(false);
     canvas.setTextSize(fit_size(caption, 2));
     print_centered(canvas, caption, 172);
+
+    // Small text in the top-right corner, clear of the rider art (battery %)
+    canvas.setTextSize(2);
+    canvas.setCursor(SCREEN_WIDTH - (int16_t)strlen(corner) * 12 - 2, 2);
+    canvas.print(corner);
 }

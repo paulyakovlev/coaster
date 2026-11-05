@@ -42,8 +42,9 @@ static void save(GFXcanvas1 &canvas, const char *name) {
 }
 
 static const char *const POSE_NAMES[RIDER_POSE_COUNT] = {
-    "stopped", "fast", "climbing", "cruising", "bed", "waking", "coffee", "couch"};
-static const char *const STATE_NAMES[] = {"idle", "waking", "riding", "paused", "finished"};
+    "stopped", "fast", "climbing", "cruising", "bed", "waking", "coffee"};
+static const char *const STATE_NAMES[] = {"idle", "waking", "riding", "paused", "finished",
+                                          "sleeping"};
 static const char *const PAGE_NAMES[]  = {"rider", "dashboard", "elevation"};
 
 // Button presses in the scripted session, by second
@@ -57,7 +58,7 @@ static const struct {
     {240, UI_IN_PWR}, {255, UI_IN_PAGE}, {270, UI_IN_PWR}, // pause, page, resume
     {320, UI_IN_PWR}, {330, UI_IN_PWR_LONG},               // pause, finish
     {340, UI_IN_PAGE}, {345, UI_IN_PAGE}, {350, UI_IN_PAGE},  // summary pages
-    {360, UI_IN_PWR_LONG},                                 // back to bed
+    {360, UI_IN_PWR_LONG},                                 // back to idle
 };
 
 // Drive the real UI with the fake ride and the script. Saves full refreshes,
@@ -74,13 +75,16 @@ static void session(GFXcanvas1 &canvas) {
     bool      recording = false;
     ride_stats_init(&stats);
     ui_init(&ui, 0);
+    ui.battery_pct = 76;
 
     int counts[3] = {0, 0, 0};
-    int by_state[5][3] = {};  // [UiState][UiRefresh]
+    int by_state[6][3] = {};  // [UiState][UiRefresh]
     RiderPose last_pose = RIDER_POSE_COUNT;
-    const uint32_t end_s = 370;
+    uint32_t end_s = 0;
 
-    for (uint32_t t = 0; t <= end_s; t++) {
+    // Runs until the rider falls asleep after the ride, as the board would
+    for (uint32_t t = 0; ui.shown.state != UI_SLEEPING || !ui.has_shown; t++) {
+        end_s = t;
         uint32_t now = t * 1000;
         bool pressed = false;
         for (const auto &step : SCRIPT) {
@@ -125,7 +129,7 @@ static void session(GFXcanvas1 &canvas) {
     }
     printf("session: %u s, %d full refreshes, %d partial, %d skipped (nothing changed)\n", end_s + 1,
            counts[UI_REFRESH_FULL], counts[UI_REFRESH_PARTIAL], counts[UI_REFRESH_NONE]);
-    for (int st = 0; st < 5; st++) {
+    for (int st = 0; st < 6; st++) {
         int total = by_state[st][0] + by_state[st][1] + by_state[st][2];
         printf("  %-8s %3d s: %2d full, %3d partial, %3d skipped\n", STATE_NAMES[st], total,
                by_state[st][UI_REFRESH_FULL], by_state[st][UI_REFRESH_PARTIAL],
@@ -157,7 +161,7 @@ int main(int argc, char **argv) {
     save(canvas, "page_dashboard_long");
     screen_draw_dashboard(canvas, "14", "avg mph", "31.2", "mi", "2:15", "h:mm");
     save(canvas, "page_dashboard_summary");
-    screen_draw_page(canvas, "1234", "ft up", false, RIDER_CRUISING, 0);
+    screen_draw_dashboard(canvas, "1234", "ft up", "5280", "ft alt", "76%", "battery");
     save(canvas, "page_elevation");
 
     session(canvas);

@@ -26,7 +26,6 @@ enum RiderPose {
     RIDER_BED,      // idle: asleep in bed
     RIDER_WAKING,   // ride starting: sits up in bed
     RIDER_COFFEE,   // paused by hand: coffee next to the bike
-    RIDER_COUCH,    // ride finished: on the couch
     RIDER_POSE_COUNT
 };
 
@@ -59,5 +58,7 @@ void screen_draw_dashboard(GFXcanvas1 &canvas, const char *main, const char *mai
                            const char *right_unit);
 
 // A scene: the rider large (3x), with a short caption underneath. For the
-// moments without a number, like idle and waking up.
-void screen_draw_scene(GFXcanvas1 &canvas, RiderPose pose, uint8_t frame, const char *caption);
+// moments without a number, like idle and waking up. corner is small text in
+// the top-right corner (the battery), or "".
+void screen_draw_scene(GFXcanvas1 &canvas, RiderPose pose, uint8_t frame, const char *caption,
+                       const char *corner);
