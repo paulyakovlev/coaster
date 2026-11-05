@@ -1,7 +1,9 @@
 // Coaster firmware: buttons, ride recording and the screen.
 //
-// No GPS yet: while recording, a fake ride (lib/fake_ride) supplies one fix
-// per second. GPX lines are formatted but not stored until there's storage.
+// Fixes come from the GPS over UART. The fake-ride build (env fake-ride)
+// swaps in a made-up ride, one fix per second, for testing at a desk.
+// Each ride is saved as a GPX file on the flash (lib/ride_log); one cut off
+// by a power cut is repaired at the next boot.
 //
 // Buttons: BOOT = next page. PWR = ride control (see lib/ui/ui.h).
 // Starting a ride plays one short sound; nothing else beeps (group rides).
@@ -9,14 +11,17 @@
 
 #include <Arduino.h>
 #include <Adafruit_GFX.h>
+#include <LittleFS.h>
 #include <Wire.h>
 #include "driver/rtc_io.h"
+#include "esp_partition.h"
 #include "esp_sleep.h"
 #include "battery.h"
 #include "button.h"
 #include "display.h"
 #include "fake_ride.h"
 #include "ride.h"
+#include "ride_log.h"
 #include "screen.h"
 #include "sound.h"
 #include "ui.h"
@@ -43,20 +48,80 @@
 #define SOUND_VOLUME    0xBF
 
 #define BUTTON_POLL_MS  10
-#define FIX_INTERVAL_MS 1000
 
-// Start time for the fake ride's GPX timestamps, until the GPS gives real time
-#define FAKE_START_TIME 1793690142u  // 2026-11-03T07:15:42Z
+// Rides live in the root of the LittleFS partition ("spiffs" in partitions.csv)
+#define RIDES_DIR       "/littlefs"
 
 static GFXcanvas1    canvas(SCREEN_WIDTH, SCREEN_HEIGHT);
 static Ui            ui;
 static RideStats     stats;
-static FakeRide      fake;
 static bool          recording = false;
-static uint32_t      next_fix_ms;
+static RideLog       ride_log;
 static QueueHandle_t inputs;
 static TaskHandle_t  sound_task_handle;
 static uint32_t      battery_read_ms;
+
+#ifdef FAKE_RIDE
+
+#define FIX_INTERVAL_MS 1000
+// Start time for the fake ride's GPX timestamps
+#define FAKE_START_TIME 1793690142u  // 2026-11-03T07:15:42Z
+
+static FakeRide fake;
+static uint32_t next_fix_ms;
+
+static void fixes_begin() {}
+
+// Ride starts or resumes: the next fix is due now
+static void fixes_restart(bool new_ride, uint32_t now) {
+    if (new_ride) fake_ride_init(&fake, FAKE_START_TIME);
+    next_fix_ms = now;
+}
+
+// One fix per second while recording
+static bool next_fix(uint32_t now, GpsFix *fix) {
+    if (!recording || (int32_t)(now - next_fix_ms) < 0) return false;
+    next_fix_ms += FIX_INTERVAL_MS;
+    fake_ride_next(&fake, fix);
+    return true;
+}
+
+#else
+
+// GPS UART pins: TBD. The module isn't wired yet; the candidates are GP1 and
+// GP2 on header J1 (GPIO 1 and 2). Set them from the actual wiring, the same
+// as in hwtest/gps_test.cpp. Until then, build the fake-ride env.
+#error "GPS pins not set: fill in GPS_RX_PIN and GPS_TX_PIN, then delete this line"
+#define GPS_RX_PIN  // board RX <- module TX
+#define GPS_TX_PIN  // board TX -> module RX
+
+// ATGM336H (GPS + BeiDou). Assumed: 9600 8N1, the usual factory default.
+// Not checked against its data sheet; hwtest/gps_test.cpp confirms it.
+#define GPS_BAUD    9600
+// A full refresh blocks the loop for about 2.2 s. At 9600 baud the module can
+// send at most 960 bytes a second: room for 4 s, so no sentence is lost.
+#define GPS_RX_BUFFER 4096
+
+static NmeaParser nmea;
+
+static void fixes_begin() {
+    Serial1.setRxBufferSize(GPS_RX_BUFFER);  // before begin(), or it's ignored
+    Serial1.begin(GPS_BAUD, SERIAL_8N1, GPS_RX_PIN, GPS_TX_PIN);
+    nmea_init(&nmea);
+}
+
+static void fixes_restart(bool, uint32_t) {}
+
+// Whatever the GPS has sent since the last call, up to one complete fix.
+// Runs while not recording too, so the UART buffer never fills up.
+static bool next_fix(uint32_t, GpsFix *fix) {
+    while (Serial1.available()) {
+        if (nmea_feed(&nmea, (char)Serial1.read(), fix)) return true;
+    }
+    return false;
+}
+
+#endif
 
 static const char *const STATE_NAMES[] = {"idle", "waking", "riding", "paused", "finished",
                                           "sleeping"};
@@ -104,20 +169,27 @@ static void apply(UiAction action, uint32_t now) {
     switch (action) {
     case UI_ACT_START:
         ride_stats_init(&stats);
-        fake_ride_init(&fake, FAKE_START_TIME);
-        recording   = true;
-        next_fix_ms = now;
+        ride_log_start(&ride_log, RIDES_DIR);
+        fixes_restart(true, now);
+        recording = true;
         break;
     case UI_ACT_PAUSE:
         ride_stats_pause(&stats);
+        ride_log_pause(&ride_log);
         recording = false;
         break;
     case UI_ACT_RESUME:
-        recording   = true;
-        next_fix_ms = now;
+        fixes_restart(false, now);
+        recording = true;
         break;
     case UI_ACT_FINISH:
         recording = false;
+        if (ride_log_finish(&ride_log)) {
+            Serial.printf("# gpx: saved, %lu points\n", (unsigned long)ride_log.points);
+        } else {
+            Serial.printf("# gpx: not saved cleanly; %s is repaired at the next boot\n",
+                          ride_log.path);
+        }
         Serial.printf("# ride: %.2f km, %lu s elapsed, %lu s moving, avg %.1f km/h, "
                       "max %.1f km/h, %.0f m up\n",
                       stats.distance_m / 1000, (unsigned long)ride_stats_elapsed_s(&stats),
@@ -127,6 +199,47 @@ static void apply(UiAction action, uint32_t now) {
     case UI_ACT_NONE:
         break;
     }
+}
+
+// Mount the ride filesystem. Formats only a partition that was never used
+// (still erased): one that fails to mount for another reason may hold rides.
+static bool mount_storage() {
+    if (LittleFS.begin(false)) return true;
+
+    const esp_partition_t *part = esp_partition_find_first(
+        ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_SPIFFS, "spiffs");
+    if (!part) {
+        Serial.println("# storage: no partition, check partitions.csv");
+        return false;
+    }
+    // LittleFS keeps its superblock in the first two 4 KB blocks
+    static uint8_t chunk[256];
+    for (uint32_t at = 0; at < 2 * 4096; at += sizeof(chunk)) {
+        if (esp_partition_read(part, at, chunk, sizeof(chunk)) != ESP_OK) return false;
+        for (uint8_t b : chunk) {
+            if (b != 0xFF) {
+                Serial.println("# storage: mount failed and the partition isn't blank; "
+                               "not formatting, rides may be on it. Rides won't be saved.");
+                return false;
+            }
+        }
+    }
+    Serial.println("# storage: blank partition, formatting");
+    return LittleFS.format() && LittleFS.begin(false);
+}
+
+// Repair rides cut off by a power cut, then list what's stored
+static void check_rides() {
+    int repaired = ride_log_recover(RIDES_DIR);
+    if (repaired < 0) Serial.println("# rides: a cut-off ride couldn't be repaired (flash full?)");
+    if (repaired > 0) Serial.printf("# rides: repaired %d cut-off ride(s)\n", repaired);
+
+    File root = LittleFS.open("/");
+    for (File f = root.openNextFile(); f; f = root.openNextFile()) {
+        Serial.printf("# rides: %s %u bytes\n", f.name(), (unsigned)f.size());
+    }
+    Serial.printf("# rides: %u of %u KB used\n", (unsigned)(LittleFS.usedBytes() / 1024),
+                  (unsigned)(LittleFS.totalBytes() / 1024));
 }
 
 // Battery voltage, averaged over a few reads against ADC noise
@@ -158,6 +271,8 @@ void setup() {
     pinMode(BOOT_BUTTON_PIN, INPUT_PULLUP);
     pinMode(PWR_BUTTON_PIN, INPUT_PULLUP);
     Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN, 400000);
+    fixes_begin();
+    if (mount_storage()) check_rides();
 
     ride_stats_init(&stats);
     ui_init(&ui, millis());
@@ -186,12 +301,16 @@ void loop() {
         if (ui.state != before) Serial.printf("# %s\n", STATE_NAMES[ui.state]);
     }
 
-    if (recording && (int32_t)(now - next_fix_ms) >= 0) {
-        next_fix_ms += FIX_INTERVAL_MS;
-        GpsFix fix;
-        fake_ride_next(&fake, &fix);
+    // Fixes without a position (no satellites yet) change nothing
+    GpsFix fix;
+    if (next_fix(now, &fix) && recording && fix.valid) {
         ride_stats_update(&stats, &fix);
         ui_ride_update(&ui, &stats, now);
+        bool was_failed = ride_log.failed;
+        ride_log_point(&ride_log, &fix);
+        if (ride_log.failed && !was_failed) {
+            Serial.println("# gpx: write failed (flash full?); the rest of this ride isn't saved");
+        }
     }
 
     if (now - battery_read_ms >= BATTERY_EVERY_MS) {

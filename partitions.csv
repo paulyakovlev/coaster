@@ -1,0 +1,9 @@
+# 8 MB flash. The framework's default_8MB.csv without the second app slot
+# (no over-the-air updates), so rides get the space: about 5.9 MB, around
+# 16 hours of GPX at 1 point per second. The firmware is about 0.5 MB.
+# Name,   Type, SubType, Offset,   Size,     Flags
+nvs,      data, nvs,     0x9000,   0x5000,
+otadata,  data, ota,     0xe000,   0x2000,
+app0,     app,  ota_0,   0x10000,  0x200000,
+spiffs,   data, spiffs,  0x210000, 0x5E0000,
+coredump, data, coredump,0x7F0000, 0x10000,

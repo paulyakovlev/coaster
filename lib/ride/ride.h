@@ -23,7 +23,7 @@ struct GpsFix {
 
 // Reads the GPS UART byte by byte. A fix is complete once the RMC sentence
 // (date, position, speed) and GGA sentence (altitude, satellites) for the
-// same second have both arrived; the NEO-6M sends both once per second.
+// same second have both arrived; GPS modules send both once per second.
 // Accepts any talker (GP, GN, ...). Sentences with a bad checksum are dropped.
 
 #define NMEA_MAX_LINE 82  // NMEA 0183 limit, including "$" and "*hh"
