@@ -71,6 +71,11 @@ enum UiRefresh { UI_REFRESH_NONE, UI_REFRESH_PARTIAL, UI_REFRESH_FULL };
 // rider and the numbers change in the same refresh. Rest poses (bed, waking,
 // coffee) are stills, so an idle or paused device doesn't refresh. Pages
 // without the rider don't animate. Periods are in ui.cpp.
+//
+// On the rider page the moving poses (fast, climbing, cruising) also ride
+// right to left (climbing diagonally, up the slope), UI_RIDER_STEP px per frame, off the left edge and back in
+// from the right. Other poses sit centered.
+#define UI_RIDER_STEP       16
 
 #define UI_VALUE_MAX        8
 
@@ -80,6 +85,7 @@ struct UiFrame {
     UiPage    page;
     RiderPose pose;     // RIDER_POSE_COUNT when the page has no rider
     uint8_t   frame;    // animation frame, 0 when the page has no rider
+    int16_t   rider_x;  // left edge of the rider box, 0 when the page has no rider
     bool      stopped;  // riding but stopped, on any page (for the full refresh)
     int8_t    battery;  // percent on the idle and sleep screens, else -1
     char      main[UI_VALUE_MAX];
@@ -98,6 +104,7 @@ struct Ui {
 
     uint8_t   frame;             // animation frame of the current pose
     uint8_t   fixes_on_frame;    // riding poses: fixes since the frame changed
+    int16_t   rider_x;           // moving poses: left edge of the rider box
 
     // Recent (distance, elevation) per fix, for the grade
     float     hist_dist[UI_GRADE_WINDOW];

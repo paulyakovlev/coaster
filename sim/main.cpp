@@ -153,7 +153,7 @@ int main(int argc, char **argv) {
     }
 
     // Longest values each page can show
-    screen_draw_page(canvas, "18", "mph", true, RIDER_CRUISING, 0);
+    screen_draw_page(canvas, "18", "mph", true, RIDER_CRUISING, 0, RIDER_X);
     save(canvas, "page_rider");
     screen_draw_dashboard(canvas, "18", "mph", "12.4", "mi", "1:07", "h:mm");
     save(canvas, "page_dashboard");

@@ -61,7 +61,7 @@ static uint8_t fit_size(const char *text, uint8_t max_size, int16_t width = SCRE
 #define UNIT_SIZE 3
 
 void screen_draw_page(GFXcanvas1 &canvas, const char *value, const char *unit, bool show_rider,
-                      RiderPose pose, uint8_t frame) {
+                      RiderPose pose, uint8_t frame, int16_t rider_x) {
     canvas.fillScreen(SCREEN_WHITE);
     canvas.setTextColor(SCREEN_BLACK);
     canvas.setTextWrap(false);
@@ -80,7 +80,12 @@ void screen_draw_page(GFXcanvas1 &canvas, const char *value, const char *unit, b
     print_number_centered(canvas, value, 36 - 7 * size / 2, size);
     canvas.setTextSize(UNIT_SIZE);
     print_centered(canvas, unit, 70);
-    screen_draw_rider(canvas, RIDER_X, RIDER_Y, pose, frame);
+    // Climbing rides up the slope: the art's road rises about 1 px per 7
+    // to the left; 1 per 8 keeps to the 2x pixel grid. Stays clear of the
+    // unit: the box only rises past RIDER_Y - 9 once it's left of the text.
+    int16_t y = RIDER_Y;
+    if (pose == RIDER_CLIMBING) y -= (RIDER_X - rider_x) / 8;
+    screen_draw_rider(canvas, rider_x, y, pose, frame);
 }
 
 // Print text with its top edge at y, left-aligned at x or right-aligned to x

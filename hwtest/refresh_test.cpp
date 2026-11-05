@@ -60,7 +60,7 @@ static RiderPose fake_pose(float speed) {
 static void draw(float speed, RiderPose pose, uint8_t frame) {
     char value[8];
     snprintf(value, sizeof(value), "%d", (int)lroundf(speed));
-    screen_draw_page(canvas, value, "km/h", show_rider, pose, frame);
+    screen_draw_page(canvas, value, "km/h", show_rider, pose, frame, RIDER_X);
 }
 
 static void handle_serial() {

@@ -1,6 +1,6 @@
 #include "screen.h"
 
-// Side-view rider: a silly blob on a bike, riding to the right.
+// Side-view rider: a silly blob on a bike, riding to the left.
 // Pixel art, one char per sprite pixel: '#' is ink, '.' is paper. Every pose
 // fills the whole rider box, extras (snore, speed lines) included, so a pose
 // change redraws exactly that box.

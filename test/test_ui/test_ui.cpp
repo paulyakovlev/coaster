@@ -356,6 +356,33 @@ static void test_riding_animation_steps_with_fixes(void) {
     TEST_ASSERT_EQUAL(4, changes);
 }
 
+static void test_moving_rider_rides_right_to_left(void) {
+    Ui ui = riding_ui();
+    RideStats s;
+    ride_at(&s, 20, 0, 100, 0);
+    uint32_t now = UI_WAKING_MS;
+    TEST_ASSERT_EQUAL(RIDER_X, ui.rider_x);
+
+    // Cruising: one step left per fix, off the left edge, back in on the right
+    ride_for(&ui, &s, &now, 20, 0, 1);
+    TEST_ASSERT_EQUAL(RIDER_X - UI_RIDER_STEP, ui.rider_x);
+    int16_t min_x = ui.rider_x, max_x = ui.rider_x;
+    for (int i = 0; i < 60; i++) {
+        ride_for(&ui, &s, &now, 20, 0, 1);
+        if (ui.rider_x < min_x) min_x = ui.rider_x;
+        if (ui.rider_x > max_x) max_x = ui.rider_x;
+    }
+    TEST_ASSERT_TRUE(min_x > -RIDER_WIDTH);   // always partly on screen
+    TEST_ASSERT_TRUE(max_x < SCREEN_WIDTH);
+    TEST_ASSERT_TRUE(min_x <= -RIDER_WIDTH + UI_RIDER_STEP);
+    TEST_ASSERT_EQUAL(SCREEN_WIDTH - UI_RIDER_STEP, max_x);
+
+    // Stopping: dozes in the middle, then rides on from there
+    ride_for(&ui, &s, &now, 0, 0, 6);
+    TEST_ASSERT_EQUAL(RIDER_STOPPED, ui.pose);
+    TEST_ASSERT_EQUAL(RIDER_X, ui.rider_x);
+}
+
 static void test_no_animation_off_the_rider_page(void) {
     Ui ui = riding_ui();
     RideStats s;
@@ -448,6 +475,7 @@ int main(int, char **) {
     RUN_TEST(test_pose_changes_and_holds);
     RUN_TEST(test_refresh_policy);
     RUN_TEST(test_riding_animation_steps_with_fixes);
+    RUN_TEST(test_moving_rider_rides_right_to_left);
     RUN_TEST(test_no_animation_off_the_rider_page);
     RUN_TEST(test_rest_poses_hold_still);
     RUN_TEST(test_sleeps_after_idle_only);

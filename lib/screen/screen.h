@@ -33,6 +33,7 @@ enum RiderPose {
 #define RIDER_FRAMES 2
 
 // Draw the rider with the box's top-left corner at (x, y). Clears the box first.
+// Parts outside the canvas are clipped.
 void screen_draw_rider(GFXcanvas1 &canvas, int16_t x, int16_t y, RiderPose pose, uint8_t frame);
 
 // Same at any whole-number scale: 2 fills the 96x96 box, 3 is 144x144
@@ -44,12 +45,14 @@ void screen_draw_rider_preview(GFXcanvas1 &canvas, RiderPose pose, uint8_t frame
 
 // A page: one big number with its unit underneath. With the rider, the
 // number sits in the top half and the rider box at the bottom, at
-// (RIDER_X, RIDER_Y). The number shrinks to fit long values like "10:05".
+// (rider_x, RIDER_Y). rider_x can be partly off screen, for
+// riding across it; RIDER_X is centered. Climbing goes up a slope. The number shrinks to fit long
+// values like "10:05".
 #define RIDER_X ((SCREEN_WIDTH - RIDER_WIDTH) / 2)
 #define RIDER_Y (SCREEN_HEIGHT - RIDER_HEIGHT - 4)
 
 void screen_draw_page(GFXcanvas1 &canvas, const char *value, const char *unit, bool show_rider,
-                      RiderPose pose, uint8_t frame);
+                      RiderPose pose, uint8_t frame, int16_t rider_x);
 
 // The dashboard: one big number in the middle, two small ones in the top
 // corners, each with its unit underneath. No rider.

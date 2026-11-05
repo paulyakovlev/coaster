@@ -10,6 +10,10 @@
 // poses (bed, waking, coffee), which have one frame and don't animate.
 static const uint8_t ANIM_FIXES[RIDER_POSE_COUNT] = {2, 1, 2, 1, 0, 0, 0};
 
+static bool moving(RiderPose pose) {
+    return pose == RIDER_FAST || pose == RIDER_CLIMBING || pose == RIDER_CRUISING;
+}
+
 static void restart_animation(Ui *ui) {
     ui->frame          = 0;
     ui->fixes_on_frame = 0;
@@ -28,6 +32,7 @@ static void reset_riding(Ui *ui, uint32_t now_ms) {
     ui->candidate_since_ms = now_ms;
     ui->hist_len           = 0;
     ui->hist_head          = 0;
+    ui->rider_x            = RIDER_X;
 }
 
 void ui_init(Ui *ui, uint32_t now_ms) {
@@ -131,12 +136,18 @@ void ui_ride_update(Ui *ui, const RideStats *stats, uint32_t now_ms) {
     if (ui->candidate != ui->pose && now_ms - ui->candidate_since_ms >= hold) {
         ui->pose = ui->candidate;
         restart_animation(ui);
+        if (!moving(ui->pose)) ui->rider_x = RIDER_X;  // moves on from the middle
         return;
     }
 
     if (++ui->fixes_on_frame >= ANIM_FIXES[ui->pose]) {
         ui->frame          = (ui->frame + 1) % RIDER_FRAMES;
         ui->fixes_on_frame = 0;
+        if (moving(ui->pose)) {
+            ui->rider_x -= UI_RIDER_STEP;
+            // Gone off the left edge: back in from the right
+            if (ui->rider_x <= -RIDER_WIDTH) ui->rider_x = SCREEN_WIDTH - UI_RIDER_STEP;
+        }
     }
 }
 
@@ -276,8 +287,9 @@ static void build_frame(const Ui *ui, const RideStats *stats, UiFrame *f) {
         return;
     }
     if (ui->page == UI_PAGE_RIDER) {
-        f->pose  = ui->state == UI_RIDING ? ui->pose : rest_pose(ui->state);
-        f->frame = ui->frame;
+        f->pose    = ui->state == UI_RIDING ? ui->pose : rest_pose(ui->state);
+        f->frame   = ui->frame;
+        f->rider_x = moving(f->pose) ? ui->rider_x : RIDER_X;
     }
 
     UiValue main, left, right;
@@ -290,7 +302,7 @@ static void build_frame(const Ui *ui, const RideStats *stats, UiFrame *f) {
 
 static bool same_frame(const UiFrame *a, const UiFrame *b) {
     return a->state == b->state && a->page == b->page && a->pose == b->pose &&
-           a->frame == b->frame && a->stopped == b->stopped && a->battery == b->battery &&
+           a->frame == b->frame && a->rider_x == b->rider_x && a->stopped == b->stopped && a->battery == b->battery &&
            strcmp(a->main, b->main) == 0 &&
            strcmp(a->left, b->left) == 0 && strcmp(a->right, b->right) == 0;
 }
@@ -331,7 +343,8 @@ UiRefresh ui_render(Ui *ui, const RideStats *stats, GFXcanvas1 &canvas) {
             screen_draw_dashboard(canvas, m, main_unit, l, left_unit, r, right_unit);
         } else {
             bool rider = f.pose != RIDER_POSE_COUNT;
-            screen_draw_page(canvas, m, main_unit, rider, rider ? f.pose : RIDER_CRUISING, f.frame);
+            screen_draw_page(canvas, m, main_unit, rider, rider ? f.pose : RIDER_CRUISING, f.frame,
+                             f.rider_x);
         }
     }
 
