@@ -54,7 +54,7 @@ From `vendor/ESP32-S3-ePaper-1.54/02_Example/Arduino/*/user_config.h`, `04_SD_Ca
 | PWR button | 18 |
 | GPS UART: board RX <- module TX | 1 (GP1 on J1); board TX not used |
 
-Header J1 (a 2×6 female socket on the back of the board; wires need male ends) is labeled RXD, TXD, SDA, SCL, GP1, GP2, GP3, GP19, GP20, 3V3, VSYS and, per the schematic, GND. SDA/SCL are GPIO 47/48, with 4.7 kΩ pull-ups on the board. RXD/TXD are UART0 (GPIO 44/43, boot messages), GP19/GP20 are the USB data lines (don't use), GP3 drives the green LED, VSYS is battery/USB voltage (not for 3.3 V sensors). Source: the only schematic in the vendor repo, for the Touch variant, which matches the labels on our V2 board. I2C addresses on the shared bus: PCF85063 RTC 0x51, SHTC3 0x70, ES8311 0x18, BMP280 0x76 (no conflict).
+Header J1 (a 2×6 female socket on the back of the board; wires need male ends). From the label sticker beside it (Waveshare's outline drawing), rows top to bottom as inner / outer column: RXD / TXD, SDA / GP20, SCL / GP19, GND / GP3, 3V3 / GP2, VSYS / GP1. The socket is 6 × 16.5 mm, its outer edge 4 mm from the case's right edge (back view) and its bottom 16.1 mm above the case's bottom edge. SDA/SCL are GPIO 47/48, with 4.7 kΩ pull-ups on the board. RXD/TXD are UART0 (GPIO 44/43, boot messages), GP19/GP20 are the USB data lines (don't use), GP3 drives the green LED, VSYS is battery/USB voltage (not for 3.3 V sensors). Source: the only schematic in the vendor repo, for the Touch variant, which matches the labels on our V2 board. I2C addresses on the shared bus: PCF85063 RTC 0x51, SHTC3 0x70, ES8311 0x18, BMP280 0x76 (no conflict).
 
 ## Screen
 
