@@ -237,18 +237,55 @@ static bool mount_storage() {
     return LittleFS.format() && LittleFS.begin(false);
 }
 
-// Repair rides cut off by a power cut, then list what's stored
-static void check_rides() {
-    int repaired = ride_log_recover(RIDES_DIR);
-    if (repaired < 0) Serial.println("# rides: a cut-off ride couldn't be repaired (flash full?)");
-    if (repaired > 0) Serial.printf("# rides: repaired %d cut-off ride(s)\n", repaired);
-
+static void list_rides() {
     File root = LittleFS.open("/");
     for (File f = root.openNextFile(); f; f = root.openNextFile()) {
         Serial.printf("# rides: %s %u bytes\n", f.name(), (unsigned)f.size());
     }
     Serial.printf("# rides: %u of %u KB used\n", (unsigned)(LittleFS.usedBytes() / 1024),
                   (unsigned)(LittleFS.totalBytes() / 1024));
+}
+
+// Repair rides cut off by a power cut, then list what's stored
+static void check_rides() {
+    int repaired = ride_log_recover(RIDES_DIR);
+    if (repaired < 0) Serial.println("# rides: a cut-off ride couldn't be repaired (flash full?)");
+    if (repaired > 0) Serial.printf("# rides: repaired %d cut-off ride(s)\n", repaired);
+
+    list_rides();
+}
+
+// Serial commands, for checking a ride without Strava: a file name (e.g.
+// 20261107-014500.gpx) prints that file; an empty line lists the rides.
+static void serial_commands() {
+    static char   line[40];
+    static size_t len = 0;
+    while (Serial.available()) {
+        char c = Serial.read();
+        if (c == '\r') continue;
+        if (c != '\n') {
+            if (len < sizeof(line) - 1) line[len++] = c;
+            continue;
+        }
+        line[len] = '\0';
+        len       = 0;
+        if (line[0] == '\0') {
+            list_rides();
+            continue;
+        }
+        char path[48];
+        snprintf(path, sizeof(path), "/%s", line);
+        File f = LittleFS.open(path, "r");
+        if (!f || f.isDirectory()) {
+            Serial.printf("# no ride called %s; press Enter for the list\n", line);
+            continue;
+        }
+        Serial.printf("# begin %s\n", line);
+        static uint8_t chunk[256];
+        size_t n;
+        while ((n = f.read(chunk, sizeof(chunk))) > 0) Serial.write(chunk, n);
+        Serial.printf("# end %s\n", line);
+    }
 }
 
 // Battery voltage, averaged over a few reads against ADC noise
@@ -300,6 +337,7 @@ void setup() {
 
 void loop() {
     uint32_t now = millis();
+    serial_commands();
 
     UiInput in;
     while (xQueueReceive(inputs, &in, 0) == pdTRUE) {
