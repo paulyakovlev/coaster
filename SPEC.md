@@ -27,8 +27,8 @@ This is proof-of-concept hardware, chosen to test the idea, not to ship. v1 will
 - 1.54" e-paper, 200x200, black and white, SPI
 - Onboard, not yet used: PCF85063 RTC (useful for timestamps before GPS fix and for wake from sleep), SHTC3 temperature/humidity sensor, microphone
 - Audio: ES8311 codec and NS4150B speaker amplifier onboard, speaker in the 2-pin GH1.25 socket. Used for the ride start sound.
-- GPS module: ATGM336H (AT6558 chip, GPS + BeiDou), UART, NMEA 4.1 with `GN` talker. Baud assumed 9600, to confirm. Pins: TBD (not wired yet)
-- Barometer: BMP280 class, I2C (shared bus, see Pinout)
+- GPS module: ATGM336H (AT6558 chip, GPS + BeiDou), UART, NMEA 4.1 with `GN` talker. Per its user manual (tinytronics.nl/product_files/002176_ATGM336H.pdf): 9600 8N1 by default, 1 fix per second, supply 2.7-3.6 V (use 3V3, never VSYS), under 25 mA, first fix up to 35 s from cold and about 1 s from hot if its backup supply (VBAT) is kept up. The bare module has an ON/OFF pin (low = off); whether our breakout board exposes it is unknown. Wired to the board's RX only: module TX -> GP1 (GPIO 1); nothing goes back to the module.
+- Barometer: BMP280 breakout, I2C (shared bus, see Pinout). From its schematic: 6 pins, 1 VCC (3.3 V, no regulator on the board), 2 GND, 3 SCK (= SCL), 4 SDI (= SDA), 5 CSB, 6 SDO. CSB is pulled up (I2C mode) and SDO down (address 0x76); leave both unconnected. 10 kΩ pull-ups on SDA/SCL, in parallel with the board's 4.7 kΩ.
 - LiPo battery via the board's MX1.25 header
 - microSD via the onboard TF slot (FAT32)
 
@@ -52,9 +52,9 @@ From `vendor/ESP32-S3-ePaper-1.54/02_Example/Arduino/*/user_config.h`, `04_SD_Ca
 | Speaker amplifier enable (high = on) | 46 |
 | BOOT button (also deep-sleep wake pin in vendor example) | 0 |
 | PWR button | 18 |
-| GPS UART TX / RX | TBD: pick free GPIOs, confirm against schematic |
+| GPS UART: board RX <- module TX | 1 (GP1 on J1); board TX not used |
 
-Header J1 (12 pins) is labeled RXD, TXD, SDA, SCL, GP1, GP2, GP3, GP19, GP20, 3V3, VSYS and, per the schematic, GND. SDA/SCL are GPIO 47/48, with 4.7 kΩ pull-ups on the board. RXD/TXD are UART0 (GPIO 44/43, boot messages), GP19/GP20 are the USB data lines (don't use), GP3 drives the green LED, VSYS is battery/USB voltage (not for 3.3 V sensors). Source: the only schematic in the vendor repo, for the Touch variant, which matches the labels on our V2 board. I2C addresses on the shared bus: PCF85063 RTC 0x51, SHTC3 0x70, ES8311 0x18, BMP280 0x76 or 0x77 (no conflict).
+Header J1 (a 2×6 female socket on the back of the board; wires need male ends) is labeled RXD, TXD, SDA, SCL, GP1, GP2, GP3, GP19, GP20, 3V3, VSYS and, per the schematic, GND. SDA/SCL are GPIO 47/48, with 4.7 kΩ pull-ups on the board. RXD/TXD are UART0 (GPIO 44/43, boot messages), GP19/GP20 are the USB data lines (don't use), GP3 drives the green LED, VSYS is battery/USB voltage (not for 3.3 V sensors). Source: the only schematic in the vendor repo, for the Touch variant, which matches the labels on our V2 board. I2C addresses on the shared bus: PCF85063 RTC 0x51, SHTC3 0x70, ES8311 0x18, BMP280 0x76 (no conflict).
 
 ## Screen
 
@@ -143,7 +143,7 @@ E-paper is not a video display. These limits shape the screen and the rider desi
 
 ## Current status
 
-- Firmware (`src/main.cpp`, env `waveshare-epaper-154`) runs the full UI on the V2 board: both buttons, all states and pages, rider poses and the refresh policy. Fixes come from the GPS over UART (`Serial1`, 4 KB receive buffer so a 2 s full refresh loses nothing; fixes without a position are ignored). The GPS pins are not set yet, so the GPS builds stop with an `#error` until they are, and `pio run` builds env `fake-ride` (the same firmware with `lib/fake_ride/` supplying one fix per second) until then. GPS test firmware `hwtest/gps_test.cpp` (env `gps-test`) echoes raw NMEA and prints parsed fixes; written, waiting on wiring. Each ride is saved as a GPX file (see "Ride storage" below). Buttons are polled in their own FreeRTOS task, so presses during a refresh aren't lost. Flashed; not yet tried by hand on the board. The board connects over USB as `/dev/cu.usbmodem*`; octal PSRAM confirmed working.
+- Firmware (`src/main.cpp`, env `waveshare-epaper-154`) runs the full UI on the V2 board: both buttons, all states and pages, rider poses and the refresh policy. Fixes come from the GPS over UART (`Serial1`, 4 KB receive buffer so a 2 s full refresh loses nothing; fixes without a position are ignored). GPS on GP1 (GPIO 1, receive only); `pio run` builds the real firmware again, and env `fake-ride` is the same firmware with `lib/fake_ride/` supplying one fix per second. GPS test firmware `hwtest/gps_test.cpp` (env `gps-test`) echoes raw NMEA and prints parsed fixes. GPS and barometer are on a solderable breadboard wired to J1 (wiring diagram: claude.ai/artifact/AH2eScKNSHhqnnReaufbse). Ran on the board: the GPS test shows clean NMEA at 9600, "ANTENNA OK", and outside a fix with 8 satellites (GPS + BeiDou) at HDOP 1.7 within about two minutes of a cold start; indoors it saw 6 satellites at 20-33 dB-Hz and no fix. The barometer test reads 22.3 °C and 997.9 hPa with under 0.5 m of noise at rest. GPS altitude (174 m) and the barometer's standard-atmosphere altitude (129 m) differ by the weather's pressure offset, as expected; only the barometer's changes are used for climbing. Each ride is saved as a GPX file (see "Ride storage" below). Buttons are polled in their own FreeRTOS task, so presses during a refresh aren't lost. Flashed; not yet tried by hand on the board. The board connects over USB as `/dev/cu.usbmodem*`; octal PSRAM confirmed working.
 - UI logic (`lib/ui/`): debounced buttons with short and long press, the state machine, the three pages and their values in mph/mi/ft, rider pose choice (fast above 13 mph, climbing by grade over the last 30 m or more, held 3 s before changing, 5 s before dozing off) and the refresh decision (skip when nothing visible changed). Hardware-independent and unit-tested.
 - Screen drawing lives in `lib/screen/` and can be previewed as PNGs on a Mac (env `native`): pages (number auto-sized to fit, unit, optional rider), the dashboard (big number plus two corner numbers) and scenes (the rider at 3x with a caption, battery % in the corner on idle). The simulator also plays a scripted session through the real UI code into `sim_out/session/`, until the rider falls asleep after the ride: 481 s with 10 full refreshes, 149 partials and 322 skipped (127 partials in 282 s of riding, with time on pages that don't animate).
 - Panel glue (power, init, full and partial refresh) lives in `lib/display/`, shared by the firmware and the refresh test. The vendor driver always sends the whole frame; a "partial" refresh uses the partial waveform, so only changed pixels move.
@@ -162,7 +162,7 @@ E-paper is not a video display. These limits shape the screen and the rider desi
 ## Next steps
 
 1. Ride storage on the board: a power cut mid-ride and the repair at boot. Then a way to get a GPX off the device for checking (serial dump?) until sync exists.
-2. GPS: wire the ATGM336H (GP1/GP2 on J1?), set the pins in `src/main.cpp` and `hwtest/gps_test.cpp`, run the GPS test (baud, fix time indoors and out), then set `default_envs` back to `waveshare-epaper-154`.
+2. Main firmware with the real GPS: record a short walk or ride and check the GPX. The barometer isn't used by the main firmware yet (elevation still comes from GPS).
 3. A first real ride: readability at arm's length, whether 1 fps pedaling feels alive, button feel with gloves, battery life with GPS on.
 4. Power: measure the current drawn in deep sleep; light sleep between updates while riding. Steadier battery % (read when quiet, average over minutes, 5% steps).
 5. Animation ghosting: run the refresh test in animation-only mode (`a`) and find how many partials the rider's two frames can alternate before ghosting shows. Set `UI_FULL_EVERY` from that, and find the upper limit on partials between full refreshes.
@@ -173,7 +173,6 @@ E-paper is not a video display. These limits shape the screen and the rider desi
 ## Open questions
 
 - A partial refresh takes 611 ms and looks clunky. Panel-specific waveform tuning is out of scope. Options: skip refreshes when nothing visible changed (a steady speed changes rarely on a real ride), and update less than once a second when only the rider would move. Does it matter on the v1 display? A memory LCD wouldn't have this problem.
-- GPS UART pins: which free GPIOs? Candidates: GP1 and GP2 on header J1, the only free GPIOs there.
 - Power while recording: 1 Hz logging needs the chip awake or in light sleep. Deep sleep only when idle? Switch GPS power off when not recording? On J1's 3V3 the GPS stays powered while the board is in deep sleep (the hold keeps the rail up), so it drains the battery while asleep; it needs a switched supply or its own enable pin.
 - Ride storage: 5.9 MB holds about 16 hours. What happens when it's full: stop saving (now), or delete the oldest uploaded ride? Rides are deleted only after upload, once sync exists. Show a storage or save error on screen, not only over serial? No over-the-air updates with this partition table; revisit if OTA is wanted (two app slots of 2 MB would still leave about 3.9 MB).
 - Elevation gain uses GPS altitude until the barometer is in, and GPS altitude wanders by several meters. Strava recalculates elevation for GPX from devices without a barometer, so the on-device number may differ from Strava's. Is that acceptable for v1?

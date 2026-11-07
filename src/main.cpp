@@ -94,15 +94,16 @@ static bool next_fix(uint32_t now, GpsFix *fix) {
 
 #else
 
-// GPS UART pins: TBD. The module isn't wired yet; the candidates are GP1 and
-// GP2 on header J1 (GPIO 1 and 2). Set them from the actual wiring, the same
-// as in hwtest/gps_test.cpp. Until then, build the fake-ride env.
-#error "GPS pins not set: fill in GPS_RX_PIN and GPS_TX_PIN, then delete this line"
-#define GPS_RX_PIN  // board RX <- module TX
-#define GPS_TX_PIN  // board TX -> module RX
+// GPS UART: module TX -> GP1 on header J1 (GPIO 1, per the schematic in
+// vendor/.../04_Hardware/Schematics). Nothing goes back to the module: the
+// firmware only listens, and GP2 stays free for a GPS power switch.
+// -1 leaves TX unassigned; the core picks its default TX1 (GPIO 16, audio
+// I2S) only when both pins are -1.
+#define GPS_RX_PIN  1   // board RX <- module TX
+#define GPS_TX_PIN  -1  // not connected
 
-// ATGM336H (GPS + BeiDou). Assumed: 9600 8N1, the usual factory default.
-// Not checked against its data sheet; hwtest/gps_test.cpp confirms it.
+// ATGM336H (GPS + BeiDou): 9600 8N1 by default, per the ATGM336H-5N user
+// manual (section 2.6), tinytronics.nl/product_files/002176_ATGM336H.pdf
 #define GPS_BAUD    9600
 // A full refresh blocks the loop for about 2.2 s. At 9600 baud the module can
 // send at most 960 bytes a second: room for 4 s, so no sentence is lost.
