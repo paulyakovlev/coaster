@@ -28,8 +28,9 @@ p{margin:0 0 10px}
 hr{border:0; border-top:1px solid var(--lo); border-bottom:1px solid var(--hi); margin:28px 0}
 
 img.px{display:block; image-rendering:pixelated; image-rendering:crisp-edges; background:var(--paper)}
-.hero{display:inline-block; margin-top:24px; padding:10px; border:2px solid; border-color:var(--lo) var(--hi) var(--hi) var(--lo)}
-.hero img{width:200px; height:200px}
+.hero{margin:24px 0 0; padding:8px; border:2px solid; border-color:var(--lo) var(--hi) var(--hi) var(--lo)}
+.hero img{display:block; width:100%; height:auto}
+.hero figcaption{font-size:15px; font-style:italic; color:var(--soft); padding-top:6px}
 
 table.shots{border-collapse:separate; border-spacing:6px; border:1px solid var(--lo); width:calc(100% + 12px); margin-left:-6px; table-layout:fixed}
 table.shots td{border:1px solid var(--lo); padding:5px; font-size:16px; text-align:center; vertical-align:top}
@@ -53,7 +54,7 @@ table.log td:first-child{font-family:var(--f-mono); font-size:15px; white-space:
   <h1>COASTER</h1>
   <p class="sub">a small e-ink bike computer</p>
 
-  <div class="hero"><img class="px" id="screen" src="img/fast.png" alt="Ride screen: 24 mph" width="200" height="200"></div>
+  <figure class="hero"><img src="img/photo.jpg" alt="Coaster on a café table next to a Wahoo bike computer, both showing a paused ride" width="600" height="400"><figcaption>Coffee stop, next to my Wahoo.</figcaption></figure>
 
   <hr>
 
@@ -98,18 +99,9 @@ table.log td:first-child{font-family:var(--f-mono); font-size:15px; white-space:
 
   <hr>
 
+  <p class="foot">
   <span class="date">Last updated November 9, 2026</span></p>
 </main>
 
-<script>
-(() => {
-  const img = document.getElementById("screen");
-  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-  const frames = ["img/fast.png", "img/dashboard.png", "img/climbing.png", "img/coffee.png"];
-  frames.forEach(s => { new Image().src = s; });
-  let i = 0;
-  setInterval(() => { i = (i + 1) % frames.length; img.src = frames[i]; }, 3000);
-})();
-</script>
 </body>
 </html>
