@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Coaster</title>
+<meta name="description" content="Coaster: a simple e-ink bike GPS for casual rides, with Strava sync and a chill frog that rides with you.">
+<style>
+/* Layout: a plain hand-written HTML page, one left-aligned column on e-paper grey.
+   Old-web touches (serif text, blue links, grooved rules, a bordered table), no fake chrome.
+   Light on purpose to echo e-ink, so no dark theme. */
+:root{
+  color-scheme:light;
+  --paper:#e6e6e3; --ink:#141414; --soft:#5f5f5a; --hi:#f7f7f4; --lo:#9a9a94;
+  --link:#0000ee; --visited:#551a8b;
+  --f-old:"Times New Roman",Times,serif;
+  --f-mono:"Courier New",Courier,monospace;
+}
+body{margin:0; background:var(--paper); color:var(--ink); font-family:var(--f-old); font-size:19px; line-height:1.45}
+a{color:var(--link)} a:visited{color:var(--visited)}
+a:focus-visible{outline:1px dotted var(--ink); outline-offset:2px}
+.page{max-width:600px; margin:0 auto; padding-block:56px 48px;
+  padding-left:max(16px, env(safe-area-inset-left, 0px)); padding-right:max(16px, env(safe-area-inset-right, 0px))}
+h1{font-size:40px; font-weight:bold; letter-spacing:.02em; margin:0 0 2px}
+.sub{margin:0; font-style:italic; color:var(--soft)}
+h2{font-size:21px; font-weight:bold; margin:0 0 8px}
+p{margin:0 0 10px}
+hr{border:0; border-top:1px solid var(--lo); border-bottom:1px solid var(--hi); margin:28px 0}
+
+img.px{display:block; image-rendering:pixelated; image-rendering:crisp-edges; background:var(--paper)}
+.hero{display:inline-block; margin-top:24px; padding:10px; border:2px solid; border-color:var(--lo) var(--hi) var(--hi) var(--lo)}
+.hero img{width:200px; height:200px}
+
+table.shots{border-collapse:separate; border-spacing:6px; border:1px solid var(--lo); width:calc(100% + 12px); margin-left:-6px; table-layout:fixed}
+table.shots td{border:1px solid var(--lo); padding:5px; font-size:16px; text-align:center; vertical-align:top}
+table.shots img{width:100%; max-width:120px; height:auto; aspect-ratio:1; margin:0 auto 4px}
+
+table.parts{border-collapse:collapse; width:100%}
+table.parts td{padding:5px 0; border-bottom:1px dotted var(--lo); vertical-align:top}
+table.parts td:first-child{padding-right:18px}
+table.parts td:last-child{color:var(--soft); font-style:italic}
+table.log{border-collapse:collapse}
+table.log td{padding:0 0 8px; vertical-align:top}
+table.log td:first-child{font-family:var(--f-mono); font-size:15px; white-space:nowrap; padding-right:18px; padding-top:3px; color:var(--soft)}
+.foot{font-size:15px; color:var(--soft)}
+.foot a{color:var(--link)}
+.date{font-family:var(--f-mono); font-size:13px}
+@media (max-width:560px){ table.shots{border-spacing:3px} table.shots td{padding:3px; font-size:13px} h1{font-size:34px} }
+</style>
+</head>
+<body>
+<main class="page">
+  <h1>COASTER</h1>
+  <p class="sub">a small e-ink bike computer</p>
+
+  <div class="hero"><img class="px" id="screen" src="img/fast.png" alt="Ride screen: 24 mph" width="200" height="200"></div>
+
+  <hr>
+
+  <p>A simple bike GPS for casual rides, with Strava sync. Distraction-free, just the bare minimum. And a chill frog that rides with you.</p>
+
+  <hr>
+
+  <h2>Screens</h2>
+  <table class="shots">
+    <tr>
+      <td><img class="px" src="img/dashboard.png" alt="Dashboard: 14 mph" width="120" height="120">dashboard</td>
+      <td><img class="px" src="img/elevation.png" alt="Elevation: 10 ft up" width="120" height="120">climb</td>
+      <td><img class="px" src="img/coffee.png" alt="Paused, rider at a café table" width="120" height="120">coffee break</td>
+      <td><img class="px" src="img/bed.png" alt="Asleep" width="120" height="120">asleep</td>
+    </tr>
+  </table>
+
+  <hr>
+
+  <h2>Parts</h2>
+  <table class="parts">
+    <tr><td>Waveshare ESP32-S3 e-Paper 1.54″</td><td>brain, 200×200 screen, two buttons, speaker</td></tr>
+    <tr><td>ATGM336H GPS + antenna</td><td>where you are and how fast</td></tr>
+    <tr><td>BMP280 barometer</td><td>how much you climbed</td></tr>
+    <tr><td>LiPo battery</td><td>power, charged over USB-C</td></tr>
+  </table>
+
+  <hr>
+
+  <h2>Build notes</h2>
+  <table class="log">
+    <tr><td>Nov 9</td><td>Drawing a custom PCB, so it can't be wired wrong again.</td></tr>
+    <tr><td>Nov 7</td><td>First real ride. GPS said 2,500 ft of climbing. It was 350. Climb moves to a barometer.</td></tr>
+    <tr><td>Nov 7</td><td>Shorted on a metal café table mid-ride. The ride still saved and uploaded.</td></tr>
+    <tr><td>Nov 7</td><td>One jumper in the wrong socket killed the barometer.</td></tr>
+    <tr><td>Nov 7</td><td>Built the backpack: both sensors on one board that plugs straight into the device.</td></tr>
+    <tr><td>Nov 6</td><td>First GPS fix and barometer reading, on a breadboard with jumper wires.</td></tr>
+    <tr><td>Nov 5</td><td>First upload to Strava, straight from the device.</td></tr>
+    <tr><td>Nov 4</td><td>The rider arrived: a frog, hand-drawn pixel by pixel by my sister.</td></tr>
+    <tr><td>Nov 2</td><td>Started.</td></tr>
+  </table>
+
+  <hr>
+
+  <p class="foot">Built by Paul Yakovlev, with Claude Code. <a href="https://github.com/paulyakovlev/coaster">Source code</a><br>
+  <span class="date">Last updated November 9, 2026</span></p>
+</main>
+
+<script>
+(() => {
+  const img = document.getElementById("screen");
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const frames = ["img/fast.png", "img/dashboard.png", "img/climbing.png", "img/coffee.png"];
+  frames.forEach(s => { new Image().src = s; });
+  let i = 0;
+  setInterval(() => { i = (i + 1) % frames.length; img.src = frames[i]; }, 3000);
+})();
+</script>
+</body>
+</html>
