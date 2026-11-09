@@ -94,15 +94,16 @@ static bool next_fix(uint32_t now, GpsFix *fix) {
 
 #else
 
-// GPS UART pins: TBD. The module isn't wired yet; the candidates are GP1 and
-// GP2 on header J1 (GPIO 1 and 2). Set them from the actual wiring, the same
-// as in hwtest/gps_test.cpp. Until then, build the fake-ride env.
-#error "GPS pins not set: fill in GPS_RX_PIN and GPS_TX_PIN, then delete this line"
-#define GPS_RX_PIN  // board RX <- module TX
-#define GPS_TX_PIN  // board TX -> module RX
+// GPS UART: module TX -> GP1 on header J1 (GPIO 1, per the schematic in
+// vendor/.../04_Hardware/Schematics). Nothing goes back to the module: the
+// firmware only listens, and GP2 stays free for a GPS power switch.
+// -1 leaves TX unassigned; the core picks its default TX1 (GPIO 16, audio
+// I2S) only when both pins are -1.
+#define GPS_RX_PIN  1   // board RX <- module TX
+#define GPS_TX_PIN  -1  // not connected
 
-// ATGM336H (GPS + BeiDou). Assumed: 9600 8N1, the usual factory default.
-// Not checked against its data sheet; hwtest/gps_test.cpp confirms it.
+// ATGM336H (GPS + BeiDou): 9600 8N1 by default, per the ATGM336H-5N user
+// manual (section 2.6), tinytronics.nl/product_files/002176_ATGM336H.pdf
 #define GPS_BAUD    9600
 // A full refresh blocks the loop for about 2.2 s. At 9600 baud the module can
 // send at most 960 bytes a second: room for 4 s, so no sentence is lost.
@@ -236,18 +237,55 @@ static bool mount_storage() {
     return LittleFS.format() && LittleFS.begin(false);
 }
 
-// Repair rides cut off by a power cut, then list what's stored
-static void check_rides() {
-    int repaired = ride_log_recover(RIDES_DIR);
-    if (repaired < 0) Serial.println("# rides: a cut-off ride couldn't be repaired (flash full?)");
-    if (repaired > 0) Serial.printf("# rides: repaired %d cut-off ride(s)\n", repaired);
-
+static void list_rides() {
     File root = LittleFS.open("/");
     for (File f = root.openNextFile(); f; f = root.openNextFile()) {
         Serial.printf("# rides: %s %u bytes\n", f.name(), (unsigned)f.size());
     }
     Serial.printf("# rides: %u of %u KB used\n", (unsigned)(LittleFS.usedBytes() / 1024),
                   (unsigned)(LittleFS.totalBytes() / 1024));
+}
+
+// Repair rides cut off by a power cut, then list what's stored
+static void check_rides() {
+    int repaired = ride_log_recover(RIDES_DIR);
+    if (repaired < 0) Serial.println("# rides: a cut-off ride couldn't be repaired (flash full?)");
+    if (repaired > 0) Serial.printf("# rides: repaired %d cut-off ride(s)\n", repaired);
+
+    list_rides();
+}
+
+// Serial commands, for checking a ride without Strava: a file name (e.g.
+// 20261107-014500.gpx) prints that file; an empty line lists the rides.
+static void serial_commands() {
+    static char   line[40];
+    static size_t len = 0;
+    while (Serial.available()) {
+        char c = Serial.read();
+        if (c == '\r') continue;
+        if (c != '\n') {
+            if (len < sizeof(line) - 1) line[len++] = c;
+            continue;
+        }
+        line[len] = '\0';
+        len       = 0;
+        if (line[0] == '\0') {
+            list_rides();
+            continue;
+        }
+        char path[48];
+        snprintf(path, sizeof(path), "/%s", line);
+        File f = LittleFS.open(path, "r");
+        if (!f || f.isDirectory()) {
+            Serial.printf("# no ride called %s; press Enter for the list\n", line);
+            continue;
+        }
+        Serial.printf("# begin %s\n", line);
+        static uint8_t chunk[256];
+        size_t n;
+        while ((n = f.read(chunk, sizeof(chunk))) > 0) Serial.write(chunk, n);
+        Serial.printf("# end %s\n", line);
+    }
 }
 
 // Battery voltage, averaged over a few reads against ADC noise
@@ -299,6 +337,7 @@ void setup() {
 
 void loop() {
     uint32_t now = millis();
+    serial_commands();
 
     UiInput in;
     while (xQueueReceive(inputs, &in, 0) == pdTRUE) {

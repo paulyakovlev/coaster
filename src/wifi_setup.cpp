@@ -106,6 +106,7 @@ static void handle_save() {
 // ---- Step 2: Strava, on home Wi-Fi --------------------------------------------
 
 static void handle_signin() {
+    Serial.println("# setup: phone opened the sign-in page");
     char url[320];
     strava_authorize_url(url, sizeof(url), state);
     server.sendHeader("Location", url);
@@ -113,6 +114,8 @@ static void handle_signin() {
 }
 
 static void handle_callback() {
+    // Logged so a sign-in that stalls shows whether the phone got back here
+    Serial.println("# setup: Strava sent the phone back");
     // Phones sometimes load the page twice; the code works only once
     if (linked_at) {
         send_page(200, "<h2>Connected</h2><p>Rides upload when the Coaster is home.</p>");
